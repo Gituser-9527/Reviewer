@@ -1,0 +1,43 @@
+jurisdiction: CN_MAINLAND
+ruleVersion: '1.0.0'
+rules:
+  - id: CN_PRIVACY_IDENTITY_001
+    category: PRIVACY
+    severity: high
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText, extractedFacts.personalDataRequests]
+      values: [面试前提交身份证, 发送身份证照片, 提供身份证正反面, 上传身份证复印件]
+    explanation: 岗位在招聘早期要求提供身份证件材料，可能超出必要信息范围。
+    suggestion: 删除非必要的身份证件收集要求，并在确有必要的环节说明用途、范围和保护措施。
+
+  - id: CN_PRIVACY_FINANCIAL_002
+    category: PRIVACY
+    severity: critical
+    action: reject
+    containsAny:
+      fields: [rawText, normalizedText, extractedFacts.personalDataRequests]
+      values: [提供银行卡密码, 提供支付密码, 提供网银密码, 提供银行卡验证码]
+    explanation: 岗位要求提供金融账户密码或验证码，存在严重个人信息和财产安全风险。
+    suggestion: 删除任何索取银行卡密码、支付密码或验证码的内容。
+
+  - id: CN_PRIVACY_FAMILY_003
+    category: PRIVACY
+    severity: medium
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText, extractedFacts.personalDataRequests]
+      values: [提供家庭成员身份证, 提交配偶信息, 填写父母工作单位, 提供子女信息]
+    explanation: 岗位要求收集家庭成员信息，需要确认是否具有明确、必要且合法的目的。
+    suggestion: 删除与招聘评估无关的家庭成员信息收集要求。
+
+  - id: CN_PRIVACY_HEALTH_004
+    category: PRIVACY
+    severity: high
+    action: manual_review
+    regex:
+      fields: [rawText, normalizedText, extractedFacts.personalDataRequests]
+      patterns:
+        - '(?:提交|提供|上传).{0,8}(?:基因|遗传|病史|体检报告|健康档案)'
+    explanation: 岗位要求提供健康或遗传信息，需要确认收集环节、必要性和保护措施。
+    suggestion: 将健康信息收集限制在依法必要的岗位和适当环节，并提供充分告知。

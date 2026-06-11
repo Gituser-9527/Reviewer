@@ -1,0 +1,54 @@
+jurisdiction: CN_MAINLAND
+ruleVersion: '1.0.0'
+rules:
+  - id: CN_DISCRIMINATION_GENDER_001
+    category: DISCRIMINATION
+    severity: high
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText]
+      values: [限女性, 只招女性, 女性优先, 限男性, 只招男性, 男性优先]
+    explanation: 岗位包含明确的性别限制或偏好，可能存在就业歧视风险。
+    suggestion: 删除与岗位履职无直接关系的性别限制；如属于依法允许的特殊岗位，应补充依据并人工复核。
+
+  - id: CN_DISCRIMINATION_MARRIAGE_002
+    category: DISCRIMINATION
+    severity: high
+    action: reject
+    containsAny:
+      fields: [rawText, normalizedText]
+      values: [已婚已育优先, 未婚优先, 已婚优先, 无生育计划, 三年内不生育]
+    explanation: 岗位将婚姻或生育状况作为招聘条件，存在较高的就业歧视风险。
+    suggestion: 删除婚姻、生育状态或生育计划相关要求。
+
+  - id: CN_DISCRIMINATION_AGE_003
+    category: DISCRIMINATION
+    severity: high
+    action: manual_review
+    regex:
+      fields: [rawText, normalizedText, extractedFacts.requirements]
+      patterns:
+        - '(?:年龄|年纪).{0,6}(?:不超过|以下|以内|限)\s*\d{2}(?:岁)?'
+        - '\d{2}\s*[-至到]\s*\d{2}\s*岁'
+    explanation: 岗位包含明确年龄上限或年龄区间，需要确认该限制是否与岗位职责存在必要关联。
+    suggestion: 删除不必要的年龄限制，改为描述经验、能力或法定资质要求。
+
+  - id: CN_DISCRIMINATION_HUKOU_004
+    category: DISCRIMINATION
+    severity: medium
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText, extractedFacts.requirements]
+      values: [本地户口优先, 限本地户籍, 外地人勿扰, 限本省人, 本地人优先]
+    explanation: 岗位包含地域或户籍偏好，可能与实际履职要求无直接关系。
+    suggestion: 删除地域、籍贯或户籍偏好，改为明确工作地点和到岗要求。
+
+  - id: CN_DISCRIMINATION_HEALTH_005
+    category: DISCRIMINATION
+    severity: high
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText, extractedFacts.requirements]
+      values: [无残疾, 身体无缺陷, 乙肝携带者勿扰, 不得有传染病]
+    explanation: 岗位包含健康或残障限制，需要确认其必要性、合法性和适用场景。
+    suggestion: 删除与履职无关的健康限制；特殊岗位要求应转人工复核并补充依据。

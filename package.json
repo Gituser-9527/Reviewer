@@ -1,0 +1,36 @@
+{
+  "name": "job-compliance-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo for the job compliance audit agent.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.9.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "npm run build:packages && npm run build --workspace @job-compliance/api && npm run build --workspace @job-compliance/web",
+    "build:packages": "npm run build --workspace @job-compliance/shared && npm run build --workspace @job-compliance/core && npm run build --workspace @job-compliance/database",
+    "dev:api": "npm run build:packages && npm run dev --workspace @job-compliance/api",
+    "dev:web": "npm run build:packages && npm run dev --workspace @job-compliance/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "npm run build:packages && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run build:packages && npm run typecheck --workspace @job-compliance/api && npm run typecheck --workspace @job-compliance/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.0.0"
+  }
+}

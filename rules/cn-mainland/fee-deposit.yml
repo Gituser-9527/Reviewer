@@ -1,0 +1,42 @@
+jurisdiction: CN_MAINLAND
+ruleVersion: '1.0.0'
+rules:
+  - id: CN_FEE_DEPOSIT_001
+    category: FEE_DEPOSIT
+    severity: critical
+    action: reject
+    patterns: [保证金, 押金, 服装费, 培训贷, 入职费]
+    explanation: 岗位疑似要求劳动者提供担保或以其他名义收取财物。
+    suggestion: 删除所有入职前收费、押金、担保、贷款相关内容。
+
+  - id: CN_FEE_DEPOSIT_AMOUNT_002
+    category: FEE_DEPOSIT
+    severity: critical
+    action: reject
+    regex:
+      fields: [rawText, normalizedText, extractedFacts.feeStatements]
+      patterns:
+        - '(?:缴纳|支付|交纳|收取).{0,12}\d+(?:\.\d+)?\s*元'
+        - '\d+(?:\.\d+)?\s*元.{0,8}(?:押金|保证金|服装费|入职费)'
+    explanation: 岗位包含要求求职者支付具体金额的表述，存在违规收费风险。
+    suggestion: 删除向求职者收取费用的金额、方式和条件。
+
+  - id: CN_FEE_DEPOSIT_DOCUMENT_003
+    category: FEE_DEPOSIT
+    severity: high
+    action: reject
+    containsAny:
+      fields: [rawText, normalizedText]
+      values: [扣押身份证, 上交身份证原件, 扣留毕业证, 扣押证件, 证件抵押]
+    explanation: 岗位疑似要求扣押或抵押求职者证件，存在较高合规风险。
+    suggestion: 删除扣押、抵押或长期保管求职者证件原件的要求。
+
+  - id: CN_FEE_DEPOSIT_TRAINING_004
+    category: FEE_DEPOSIT
+    severity: high
+    action: reject
+    containsAny:
+      fields: [rawText, normalizedText, extractedFacts.feeStatements]
+      values: [先交费后上岗, 收费培训, 岗前培训自费, 培训费用自理, 分期培训费]
+    explanation: 岗位将付费培训与录用或上岗绑定，存在收费或培训贷款风险。
+    suggestion: 删除将付费培训作为录用、上岗或保留岗位条件的内容。

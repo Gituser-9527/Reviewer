@@ -1,0 +1,44 @@
+jurisdiction: CN_MAINLAND
+ruleVersion: '1.0.0'
+rules:
+  - id: CN_MISLEADING_GUARANTEED_INCOME_001
+    category: FALSE_OR_MISLEADING
+    severity: high
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText]
+      values: [保证月入, 保底月入十万, 收入无上限, 轻松月入过万, 百分百高薪]
+    explanation: 岗位包含难以核验的保证性高收入承诺，可能误导求职者。
+    suggestion: 使用可核验的薪酬范围、计薪方式和达成条件，删除绝对化收入承诺。
+
+  - id: CN_MISLEADING_DAILY_INCOME_002
+    category: FALSE_OR_MISLEADING
+    severity: medium
+    action: manual_review
+    regex:
+      fields: [rawText, normalizedText]
+      patterns:
+        - '(?:日赚|每天赚|一天赚)\s*\d+(?:\.\d+)?\s*元'
+        - '零门槛.{0,8}(?:月入|日赚)'
+    explanation: 岗位包含低门槛、短周期高收入表达，需要核验薪酬计算和实现条件。
+    suggestion: 补充收入构成、结算周期和适用条件，删除无法保证的收益表述。
+
+  - id: CN_MISLEADING_REMOTE_TASK_003
+    category: FALSE_OR_MISLEADING
+    severity: high
+    action: manual_review
+    containsAny:
+      fields: [rawText, normalizedText]
+      values: [刷单兼职, 点赞返佣, 垫资做任务, 充值返利, 代收款兼职]
+    explanation: 岗位包含高风险兼职或返佣任务表述，可能存在虚假招聘或财产安全风险。
+    suggestion: 拦截并人工核验招聘主体、工作内容、资金流和报酬来源。
+
+  - id: CN_MISLEADING_ABSOLUTE_004
+    category: FALSE_OR_MISLEADING
+    severity: medium
+    action: allow_with_warning
+    containsAny:
+      fields: [rawText, normalizedText]
+      values: [百分百录用, 保证入职, 绝不加班, 永不裁员, 无任何风险]
+    explanation: 岗位包含绝对化承诺，可能无法真实、持续履行。
+    suggestion: 改为客观、可验证且带有明确适用条件的描述。

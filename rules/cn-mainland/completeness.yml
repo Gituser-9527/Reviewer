@@ -1,0 +1,42 @@
+jurisdiction: CN_MAINLAND
+ruleVersion: '1.0.0'
+rules:
+  - id: CN_COMPLETENESS_TITLE_001
+    category: INCOMPLETE_INFORMATION
+    severity: medium
+    action: need_more_info
+    containsAny:
+      fields: [extractedFacts.missingFields]
+      values: [title]
+    explanation: 岗位缺少可识别的岗位名称，无法完成可靠审核。
+    suggestion: 补充清晰、具体的岗位名称。
+
+  - id: CN_COMPLETENESS_DESCRIPTION_002
+    category: INCOMPLETE_INFORMATION
+    severity: medium
+    action: need_more_info
+    containsAny:
+      fields: [extractedFacts.missingFields]
+      values: [description, responsibilities]
+    explanation: 岗位缺少职责或工作内容，无法判断实际招聘目的和风险。
+    suggestion: 补充主要职责、日常工作内容和岗位边界。
+
+  - id: CN_COMPLETENESS_LOCATION_003
+    category: INCOMPLETE_INFORMATION
+    severity: low
+    action: allow_with_warning
+    containsAny:
+      fields: [extractedFacts.missingFields]
+      values: [location]
+    explanation: 岗位未说明工作地点，信息完整性不足。
+    suggestion: 补充城市、区域、办公方式或出差要求。
+
+  - id: CN_COMPLETENESS_SALARY_004
+    category: INCOMPLETE_INFORMATION
+    severity: low
+    action: allow_with_warning
+    containsAny:
+      fields: [extractedFacts.missingFields]
+      values: [salary]
+    explanation: 岗位未提供薪酬信息或薪酬构成不完整。
+    suggestion: 补充薪酬范围、币种、周期和浮动部分的计算方式。
