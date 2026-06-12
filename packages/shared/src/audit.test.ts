@@ -44,7 +44,10 @@ const facts = {
 
 const evidence = {
   id: 'evidence-001',
+  title: 'Job description excerpt',
   sourceType: 'JOB_TEXT',
+  url: 'urn:test:job-description',
+  version: 'submitted',
   fieldPath: 'description',
   quote: 'Build and maintain TypeScript services.',
   start: 0,
@@ -59,6 +62,7 @@ const finding = {
   title: 'Example structural finding',
   message: 'This fixture validates the public finding contract.',
   evidence: [evidence],
+  evidenceIds: [evidence.id],
   checkerId: 'fixture-checker',
   confidence: 0.9,
 } satisfies Finding;

@@ -137,8 +137,14 @@ export interface JobFacts {
 export interface Evidence {
   /** Stable evidence identifier. */
   id: string;
+  /** Human-readable evidence title. */
+  title: string;
   /** Evidence origin, such as JOB_TEXT, RULE, LAW, PLATFORM_POLICY, or MANUAL. */
   sourceType: string;
+  /** Canonical source URL or stable internal knowledge URI. */
+  url: string;
+  /** Version of the cited evidence snapshot. */
+  version: string;
   /** Source field or document path containing the evidence. */
   fieldPath?: string;
   /** Exact source excerpt, when text evidence is available. */
@@ -157,8 +163,6 @@ export interface Evidence {
   effectiveFrom?: string;
   /** Date after which the source is no longer effective. */
   effectiveTo?: string;
-  /** Canonical source URL, when one exists. */
-  url?: string;
   /** Additional source metadata that does not affect the schema contract. */
   metadata?: Record<string, unknown>;
 }
@@ -179,6 +183,8 @@ export interface Finding {
   message: string;
   /** Evidence supporting the finding. */
   evidence: Evidence[];
+  /** Stable identifiers of all evidence attached to this finding. */
+  evidenceIds: string[];
   /** Rule identifier when the finding originated from a rule. */
   ruleId?: string;
   /** Primary evidence identifier when the finding originated from retrieved evidence. */
@@ -318,7 +324,10 @@ const validateEvidence = (input: unknown, path: string): ValidationIssue[] => {
   if (!isRecord(input)) return [issue(path, 'expected an object')];
   return [
     ...validateString(input.id, `${path}.id`),
+    ...validateString(input.title, `${path}.title`),
     ...validateString(input.sourceType, `${path}.sourceType`),
+    ...validateString(input.url, `${path}.url`),
+    ...validateString(input.version, `${path}.version`),
     ...validateString(input.fieldPath, `${path}.fieldPath`, false),
     ...validateString(input.quote, `${path}.quote`, false),
     ...validateNumber(input.start, `${path}.start`, false),
@@ -344,6 +353,7 @@ const validateFinding = (input: unknown, path: string): ValidationIssue[] => {
     ...validateString(input.title, `${path}.title`),
     ...validateString(input.message, `${path}.message`),
     ...validateString(input.evidenceId, `${path}.evidenceId`, false),
+    ...validateStringArray(input.evidenceIds, `${path}.evidenceIds`),
     ...evidenceIssues,
     ...confidenceIssues,
   ];

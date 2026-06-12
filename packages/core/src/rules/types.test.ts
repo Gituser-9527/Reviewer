@@ -36,7 +36,10 @@ const hit = {
   evidence: [
     {
       id: 'evidence-001',
+      title: '岗位原文',
       sourceType: 'JOB_TEXT',
+      url: 'urn:test:job-description',
+      version: 'submitted',
       fieldPath: 'description',
       quote: 'example',
     },

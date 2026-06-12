@@ -312,7 +312,10 @@ const uniqueMatches = (matches: MatchRecord[]): MatchRecord[] => {
 
 const toEvidence = (rule: LoadedRule, match: MatchRecord, index: number): Evidence => ({
   id: `${rule.ruleId}:${index + 1}`,
+  title: '岗位原文命中片段',
   sourceType: 'JOB_TEXT',
+  url: 'urn:job-compliance:input:job-posting',
+  version: 'submitted',
   fieldPath: match.fieldPath,
   quote: match.matchedText,
   ...(match.start === undefined ? {} : { start: match.start }),

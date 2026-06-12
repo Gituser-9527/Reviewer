@@ -1,5 +1,9 @@
 import { fileURLToPath } from 'node:url';
-import { auditJobPosting, MockEvidenceRetriever } from '@job-compliance/core';
+import {
+  auditJobPosting,
+  LocalKnowledgeRetriever,
+  MockEvidenceRetriever,
+} from '@job-compliance/core';
 import type { AuditResult, JobPostingInput } from '@job-compliance/shared';
 import type { FastifyInstance } from 'fastify';
 import { auditJobRequestSchema, auditRunParamsSchema, type AuditJobRequest } from './schemas.js';
@@ -20,6 +24,8 @@ export interface AuditRoutesDependencies {
 }
 
 const rulesDirectory = fileURLToPath(new URL('../../../../rules/cn-mainland/', import.meta.url));
+const knowledgeDirectory = fileURLToPath(new URL('../../../../knowledge/', import.meta.url));
+const localEvidenceRetriever = new LocalKnowledgeRetriever(knowledgeDirectory);
 
 function toCoreInput(request: AuditJobRequest): JobPostingInput {
   return {
@@ -48,7 +54,9 @@ const defaultAuditJob: AuditJobHandler = async (input, request) =>
     tenantId: request.tenantId,
     jurisdiction: request.options.jurisdiction,
     rulesDirectory,
-    evidenceRetriever: new MockEvidenceRetriever(),
+    evidenceRetriever: request.options.enableRag
+      ? localEvidenceRetriever
+      : new MockEvidenceRetriever(),
   });
 
 /** Registers audit submission and retrieval routes. */

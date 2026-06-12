@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AuditResult, Finding, JobPostingInput } from '@job-compliance/shared';
 import type { RuleEngine } from '../ports/rule-engine.js';
 import { auditJobPosting } from './audit-orchestrator.js';
-import { MockEvidenceRetriever } from './mock-evidence-retriever.js';
+import { MockEvidenceRetriever } from '../rag/mock-evidence-retriever.js';
 import { AuditReflectionError, ReflectionChecker } from './reflection-checker.js';
 import { RiskAggregator } from './risk-aggregator.js';
 
@@ -15,6 +15,7 @@ function finding(severity: Finding['severity']): Finding {
     title: `${severity} finding`,
     message: 'Test finding.',
     evidence: [],
+    evidenceIds: [],
     ruleId: `RULE-${severity}`,
   };
 }
@@ -103,6 +104,21 @@ describe('auditJobPosting', () => {
     expect(result.findings.every((entry) => entry.severity !== 'CRITICAL' || entry.ruleId)).toBe(
       true,
     );
+    expect(result.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'CN_LAW_EMPLOYMENT_PROMOTION_FAIR_EMPLOYMENT',
+          sourceType: 'LAW',
+        }),
+        expect.objectContaining({
+          id: 'CN_LAW_LABOR_CONTRACT_FEE_DEPOSIT',
+          sourceType: 'LAW',
+        }),
+      ]),
+    );
+    expect(
+      result.findings.every((entry) => entry.evidenceIds.length === entry.evidence.length),
+    ).toBe(true);
   });
 
   it('returns PASS and NONE when the complete posting has no rule hit', async () => {
@@ -118,13 +134,14 @@ describe('auditJobPosting', () => {
   it('uses a mock retriever and attaches retrieved evidence', async () => {
     const retriever = new MockEvidenceRetriever((query) => [
       {
-        evidenceId: `mock:${query.text.split(' ')[0]}`,
+        id: `mock:${query.category}`,
+        title: 'Mock policy',
         sourceType: 'PLATFORM_POLICY',
+        url: 'urn:test:mock-policy',
+        version: '1.0.0',
         sourceName: 'Mock policy',
         sourceVersion: '1.0.0',
-        retrievedAt: '2026-06-11T00:00:00.000Z',
-        content: 'Mock evidence used only by this test.',
-        score: 1,
+        quote: 'Mock evidence used only by this test.',
       },
     ]);
 
@@ -141,6 +158,7 @@ describe('auditJobPosting', () => {
     expect(result.riskLevel).toBe('HIGH');
     expect(retriever.queries.length).toBeGreaterThan(0);
     expect(result.findings[0]?.evidenceId).toMatch(/^mock:/u);
+    expect(result.findings[0]?.evidenceIds).toContain('mock:DISCRIMINATION');
     expect(result.evidence.some((entry) => entry.sourceName === 'Mock policy')).toBe(true);
   });
 

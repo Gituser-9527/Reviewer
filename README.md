@@ -1,6 +1,6 @@
 # 招聘岗位合规审核 Agent
 
-招聘岗位合规审核系统的 TypeScript monorepo。当前版本仅包含工程骨架、核心类型与扩展端口，不包含 LLM、RAG、规则引擎或数据库的具体业务实现。
+招聘岗位合规审核系统的 TypeScript monorepo。当前版本包含确定性 YAML 规则审核、结构化抽取、本地法规依据检索、REST API 和基础审核页面。
 
 ## 技术栈
 
@@ -40,7 +40,7 @@ npm run dev:api
 npm run dev:web
 ```
 
-可复制 `.env.example` 中的变量到本地环境覆盖 API 的 `HOST` 和 `PORT`。不要提交包含密钥或敏感数据的 `.env` 文件。
+Web 会将 `/api/*` 代理到 `http://localhost:3001`。可通过 `API_BASE_URL` 修改代理目标，也可使用 `.env.example` 中的变量覆盖 API 的 `HOST` 和 `PORT`。不要提交包含密钥或敏感数据的 `.env` 文件。
 
 ## 健康检查
 
@@ -96,15 +96,14 @@ npm run format:check  # 检查格式
 - Fastify API 与健康检查
 - Next.js 基础页面
 - 核心审核枚举和基础类型
-- LLM Provider、RAG、规则引擎、Repository 与数据库端口
+- LLM Provider、向量检索、Repository 与数据库端口
+- YAML 规则引擎与本地 Markdown/JSON 依据检索
 - lint、format、test、typecheck、build 命令
 
 尚未实现：
 
-- 岗位审核业务流程
-- YAML 规则加载与执行
 - LLM Provider 适配器
-- RAG 检索与知识库
+- pgvector 语义检索与自动知识摄取
 - PostgreSQL/pgvector 连接和迁移
 - 鉴权、租户隔离、审计日志和人工复核
 

@@ -11,11 +11,11 @@ import {
 } from '@job-compliance/shared';
 import { basicExtractor } from '../extractor/basic-extractor.js';
 import type { JobFactsExtractor } from '../extractor/types.js';
-import type { ComplianceKnowledgePort, KnowledgeResult } from '../ports/knowledge.js';
+import { LocalKnowledgeRetriever } from '../rag/local-knowledge-retriever.js';
+import type { EvidenceRetriever } from '../rag/types.js';
 import type { RuleEngine } from '../ports/rule-engine.js';
 import type { RuleHit } from '../rules/types.js';
 import { YamlRuleEngine } from '../rules/yaml-rule-engine.js';
-import { MockEvidenceRetriever } from './mock-evidence-retriever.js';
 import { ReflectionChecker } from './reflection-checker.js';
 import { RiskAggregator } from './risk-aggregator.js';
 
@@ -26,13 +26,15 @@ export interface AuditOrchestratorOptions {
   /** Rule engine used to scan normalized text and facts. */
   ruleEngine?: RuleEngine;
   /** Evidence retriever used to supplement rule evidence. */
-  evidenceRetriever?: ComplianceKnowledgePort;
+  evidenceRetriever?: EvidenceRetriever;
   /** Risk aggregator used to derive the final decision. */
   riskAggregator?: RiskAggregator;
   /** Reflection checker used to validate the final result. */
   reflectionChecker?: ReflectionChecker;
   /** Directory containing the default YAML rule set. */
   rulesDirectory?: string;
+  /** Directory containing approved local knowledge documents. */
+  knowledgeDirectory?: string;
   /** Jurisdiction used by the default rule engine. */
   jurisdiction?: string;
   /** Exact rule version used by the default rule engine. */
@@ -54,7 +56,7 @@ export interface AuditOrchestratorOptions {
 interface ResolvedOptions {
   extractor: JobFactsExtractor;
   ruleEngine: RuleEngine;
-  evidenceRetriever: ComplianceKnowledgePort;
+  evidenceRetriever: EvidenceRetriever;
   riskAggregator: RiskAggregator;
   reflectionChecker: ReflectionChecker;
   jurisdiction: string;
@@ -68,7 +70,9 @@ interface ResolvedOptions {
 }
 
 const defaultRulesDirectory = resolve(process.cwd(), 'rules', 'cn-mainland');
+const defaultKnowledgeDirectory = resolve(process.cwd(), 'knowledge');
 const ruleEngineCache = new Map<string, Promise<YamlRuleEngine>>();
+const evidenceRetrieverCache = new Map<string, LocalKnowledgeRetriever>();
 
 function getDefaultRuleEngine(directory: string): Promise<YamlRuleEngine> {
   const cached = ruleEngineCache.get(directory);
@@ -104,20 +108,12 @@ function composeRawText(input: JobPostingInput): string {
   return sections.join('\n');
 }
 
-function knowledgeResultToEvidence(result: KnowledgeResult): Evidence {
-  return {
-    id: result.evidenceId,
-    sourceType: result.sourceType,
-    sourceName: result.sourceName,
-    sourceVersion: result.sourceVersion,
-    quote: result.content,
-    ...(result.effectiveFrom === undefined ? {} : { effectiveFrom: result.effectiveFrom }),
-    ...(result.effectiveTo === undefined ? {} : { effectiveTo: result.effectiveTo }),
-    metadata: {
-      retrievedAt: result.retrievedAt,
-      score: result.score,
-    },
-  };
+function getDefaultEvidenceRetriever(directory: string): LocalKnowledgeRetriever {
+  const cached = evidenceRetrieverCache.get(directory);
+  if (cached) return cached;
+  const retriever = new LocalKnowledgeRetriever(directory);
+  evidenceRetrieverCache.set(directory, retriever);
+  return retriever;
 }
 
 function ruleHitToFinding(hit: RuleHit, index: number, retrieved: Evidence[]): Finding {
@@ -130,6 +126,7 @@ function ruleHitToFinding(hit: RuleHit, index: number, retrieved: Evidence[]): F
     title: hit.ruleId,
     message: hit.message,
     evidence,
+    evidenceIds: evidence.map((entry) => entry.id),
     ruleId: hit.ruleId,
     ...(retrieved[0] === undefined ? {} : { evidenceId: retrieved[0].id }),
     ...(hit.suggestion === undefined ? {} : { suggestion: hit.suggestion }),
@@ -165,12 +162,14 @@ async function resolveOptions(options: AuditOrchestratorOptions): Promise<Resolv
     ruleEngine:
       options.ruleEngine ??
       (await getDefaultRuleEngine(options.rulesDirectory ?? defaultRulesDirectory)),
-    evidenceRetriever: options.evidenceRetriever ?? new MockEvidenceRetriever(),
+    evidenceRetriever:
+      options.evidenceRetriever ??
+      getDefaultEvidenceRetriever(options.knowledgeDirectory ?? defaultKnowledgeDirectory),
     riskAggregator,
     reflectionChecker: options.reflectionChecker ?? new ReflectionChecker(riskAggregator),
     jurisdiction: options.jurisdiction ?? 'CN_MAINLAND',
     ruleVersion: options.ruleVersion ?? '1.0.0',
-    lawKbVersion: options.lawKbVersion ?? 'mock-1.0.0',
+    lawKbVersion: options.lawKbVersion ?? 'local-2026-06-12',
     locale: options.locale ?? 'zh-CN',
     platform: options.platform ?? 'DEFAULT',
     tenantId: options.tenantId ?? 'SYSTEM',
@@ -205,14 +204,16 @@ export async function auditJobPosting(
   const retrievedEvidence = await Promise.all(
     hits.map(async (hit) => {
       const results = await dependencies.evidenceRetriever.retrieve({
-        text: `${hit.ruleId} ${hit.category} ${hit.message}`,
+        category: hit.category,
+        text: `${hit.message} ${hit.matchedText.join(' ')}`,
+        keywords: [hit.ruleId, hit.category, ...hit.matchedText],
         jurisdiction: dependencies.jurisdiction,
         platform: dependencies.platform,
         locale: dependencies.locale,
         asOf: evaluatedAt,
         topK: 3,
       });
-      return results.map(knowledgeResultToEvidence);
+      return results;
     }),
   );
   const findings = hits.map((hit, index) =>

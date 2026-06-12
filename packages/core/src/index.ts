@@ -1,5 +1,6 @@
 export * from './extractor/index.js';
 export * from './orchestrator/index.js';
+export * from './rag/index.js';
 export * from './ports/knowledge.js';
 export * from './ports/llm-provider.js';
 export * from './ports/review-repository.js';

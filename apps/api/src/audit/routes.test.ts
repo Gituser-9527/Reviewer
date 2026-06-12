@@ -87,6 +87,39 @@ describe('audit API routes', () => {
     );
   });
 
+  it('returns locally maintained authority evidence when RAG is enabled', async () => {
+    const app = buildApp();
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/audit/job',
+      payload: {
+        ...validRequest,
+        options: {
+          ...validRequest.options,
+          enableRag: true,
+        },
+      },
+    });
+    const result = response.json<AuditResult>();
+
+    expect(response.statusCode).toBe(201);
+    expect(result.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'CN_LAW_EMPLOYMENT_PROMOTION_FAIR_EMPLOYMENT',
+          sourceType: 'LAW',
+        }),
+        expect.objectContaining({
+          id: 'CN_LAW_LABOR_CONTRACT_FEE_DEPOSIT',
+          sourceType: 'LAW',
+        }),
+      ]),
+    );
+    expect(result.findings.some((finding) => finding.evidenceIds.length > 0)).toBe(true);
+  });
+
   it('returns 404 for an unknown audit run', async () => {
     const app = buildApp();
     apps.push(app);
