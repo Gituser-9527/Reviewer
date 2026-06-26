@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@job-compliance/shared": "0.1.0",
-    "yaml": "^2.8.0"
+    "yaml": "^2.8.0",
+    "zod": "^4.4.3"
   }
 }

@@ -257,7 +257,23 @@ export default function HomePage() {
             <span>Job Compliance Review</span>
           </div>
         </div>
-        <span className="system-status">规则引擎 · CN MAINLAND · V1.0.0</span>
+        <nav className="top-nav">
+          <a className="text-link" href="/reviews">
+            人工复核台
+          </a>
+          <a className="text-link" href="/rules">
+            规则管理
+          </a>
+          <a className="text-link" href="/evals">
+            评估台
+          </a>
+          <a className="text-link" href="/monitoring">
+            监控灰度
+          </a>
+          <a className="text-link" href="/beta-trial">
+            封闭试运行
+          </a>
+        </nav>
       </header>
 
       <section className="intro-block">

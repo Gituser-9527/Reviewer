@@ -423,6 +423,17 @@ API 测试必须覆盖：
 
 ## Security and Compliance
 
+安全与隐私处理必须统一通过 `packages/core/src/security/`。
+
+后续代码不得绕过以下函数自行拼接脱敏逻辑：
+
+- `detectSensitiveInfo(text)`
+- `redactSensitiveInfo(text)`
+- `hashSensitiveValue(value)`
+- `sanitizeAuditLog(payload)`
+
+如需新增敏感信息类型，应先扩展 security 模块和单元测试，再由业务模块调用。
+
 禁止在以下位置保存真实密钥或未脱敏个人信息：
 
 - 代码
@@ -441,6 +452,10 @@ API 测试必须覆盖：
 - API Key
 - 数据库连接串
 - 原始模型供应商响应中的敏感内容
+
+审计日志默认必须保存脱敏后的文本。`rawText` 默认不得写入日志；如确需保存，必须通过显式配置开关，并至少经过 `redactSensitiveInfo` 脱敏。
+
+LLM 调用前默认必须使用脱敏文本。除非调用方显式声明允许传递敏感数据，否则不得把手机号、身份证号、银行卡号、邮箱、微信号、详细地址或验证码等原文发送给模型供应商。
 
 对外错误信息不得暴露：
 
@@ -579,3 +594,4 @@ Agent 在执行任务时必须遵守以下流程：
 8. 租户数据访问必须显式携带 `tenantId`。
 9. 改写文案必须经过二次审核。
 10. 系统不得输出绝对法律裁判结论。
+11. 后续代码不得绕过 `packages/core/src/security/` 自行处理脱敏、哈希或审计日志清洗。

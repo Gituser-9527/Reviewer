@@ -370,6 +370,10 @@ const validateAuditContext = (input: unknown, path: string): ValidationIssue[] =
     ...validateString(input.platform, `${path}.platform`),
     ...validateString(input.ruleVersion, `${path}.ruleVersion`),
     ...validateString(input.lawKbVersion, `${path}.lawKbVersion`),
+    ...validateString(input.promptVersion, `${path}.promptVersion`, false),
+    ...validateString(input.modelProvider, `${path}.modelProvider`, false),
+    ...validateString(input.modelName, `${path}.modelName`, false),
+    ...validateString(input.modelVersion, `${path}.modelVersion`, false),
     ...validateString(input.evaluatedAt, `${path}.evaluatedAt`),
   ];
 };

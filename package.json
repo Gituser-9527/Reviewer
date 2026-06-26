@@ -14,8 +14,13 @@
   "scripts": {
     "build": "npm run build:packages && npm run build --workspace @job-compliance/api && npm run build --workspace @job-compliance/web",
     "build:packages": "npm run build --workspace @job-compliance/shared && npm run build --workspace @job-compliance/core && npm run build --workspace @job-compliance/database",
+    "db:migrate": "npm run migrate --workspace @job-compliance/database",
     "dev:api": "npm run build:packages && npm run dev --workspace @job-compliance/api",
     "dev:web": "npm run build:packages && npm run dev --workspace @job-compliance/web",
+    "eval": "npm run build:packages && tsx --conditions=import evals/run-eval.ts",
+    "eval:redteam": "npm run build:packages && tsx --conditions=import evals/run-red-team.ts",
+    "eval:real": "npm run build:packages && tsx --conditions=import evals/run-real-eval.ts",
+    "eval:dataset": "npm run build:packages && tsx --conditions=import evals/run-dataset-eval.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",

@@ -54,5 +54,19 @@ export const auditRunParamsSchema = z
   })
   .strict();
 
+/** Query parameters accepted by GET /api/audit/runs/:id. */
+export const auditRunGetQuerySchema = z
+  .object({
+    tenantId: nonEmptyText.max(200).optional(),
+  })
+  .strict();
+
+/** Query parameters accepted by GET /api/audit/runs. */
+export const auditRunListQuerySchema = z
+  .object({
+    tenantId: nonEmptyText.max(200),
+  })
+  .strict();
+
 /** Inferred API request body type. */
 export type AuditJobRequest = z.infer<typeof auditJobRequestSchema>;

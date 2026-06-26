@@ -137,6 +137,7 @@ function toEvidence(ranked: RankedDocument, sourcePath: string): Evidence {
     sourceVersion: document.version,
     metadata: {
       ...document.metadata,
+      categories: document.categories,
       knowledgePath: sourcePath,
       retrievalScore: score,
       maintainedSummary: true,

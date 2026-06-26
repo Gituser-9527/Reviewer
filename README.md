@@ -9,7 +9,7 @@
 - Frontend：Next.js、React、TypeScript
 - Test：Vitest
 - Quality：ESLint、Prettier
-- Database：预留 PostgreSQL/pgvector 接口，尚未接入驱动和迁移
+- Database：PostgreSQL、Drizzle ORM，预留 pgvector 演进
 
 ## 环境要求
 
@@ -42,6 +42,14 @@ npm run dev:web
 
 Web 会将 `/api/*` 代理到 `http://localhost:3001`。可通过 `API_BASE_URL` 修改代理目标，也可使用 `.env.example` 中的变量覆盖 API 的 `HOST` 和 `PORT`。不要提交包含密钥或敏感数据的 `.env` 文件。
 
+如需启用 PostgreSQL 持久化，先设置 `DATABASE_URL` 并执行迁移：
+
+```bash
+npm run db:migrate
+```
+
+未设置 `DATABASE_URL` 时，API 会使用进程内存存储，便于本地开发和单元测试。
+
 ## 健康检查
 
 ```bash
@@ -66,6 +74,7 @@ npm run typecheck     # 构建包并检查应用类型
 npm run lint          # 运行 ESLint
 npm run format        # 使用 Prettier 格式化
 npm run format:check  # 检查格式
+npm run db:migrate    # 使用 DATABASE_URL 执行 PostgreSQL migration
 ```
 
 ## 目录结构
@@ -77,7 +86,7 @@ npm run format:check  # 检查格式
 │  └─ web/             # Next.js 管理台
 ├─ packages/
 │  ├─ core/            # 领域类型与 LLM/RAG/规则/持久化端口
-│  ├─ database/        # 数据库能力接口，暂无 PostgreSQL 实现
+│  ├─ database/        # PostgreSQL schema、migration 与 repository
 │  └─ shared/          # 稳定枚举、共享 DTO
 ├─ rules/              # YAML 规则预留目录
 ├─ knowledge/          # 合规知识与 RAG 资产预留目录
@@ -98,13 +107,13 @@ npm run format:check  # 检查格式
 - 核心审核枚举和基础类型
 - LLM Provider、向量检索、Repository 与数据库端口
 - YAML 规则引擎与本地 Markdown/JSON 依据检索
+- PostgreSQL 持久化 schema、migration、repository 与 API 查询适配
 - lint、format、test、typecheck、build 命令
 
 尚未实现：
 
 - LLM Provider 适配器
 - pgvector 语义检索与自动知识摄取
-- PostgreSQL/pgvector 连接和迁移
 - 鉴权、租户隔离、审计日志和人工复核
 
 后续实施顺序以 [TASKS.md](./TASKS.md) 和 `docs/` 下的权威规格为准。

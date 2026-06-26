@@ -41,6 +41,8 @@ export interface AuditOrchestratorOptions {
   ruleVersion?: string;
   /** Version label for the mock or real knowledge base. */
   lawKbVersion?: string;
+  /** Version label for the model configuration used by optional LLM-assisted steps. */
+  modelVersion?: string;
   /** Locale used for evidence retrieval. */
   locale?: string;
   /** Platform policy scope used for evidence retrieval. */
@@ -62,6 +64,7 @@ interface ResolvedOptions {
   jurisdiction: string;
   ruleVersion: string;
   lawKbVersion: string;
+  modelVersion: string;
   locale: string;
   platform: string;
   tenantId: string;
@@ -134,6 +137,11 @@ function ruleHitToFinding(hit: RuleHit, index: number, retrieved: Evidence[]): F
       ruleVersion: hit.ruleVersion,
       action: hit.action,
       matchedText: hit.matchedText,
+      matchedFieldPaths: [
+        ...new Set(
+          hit.evidence.flatMap((entry) => (entry.fieldPath === undefined ? [] : [entry.fieldPath])),
+        ),
+      ],
     },
   };
 }
@@ -170,6 +178,7 @@ async function resolveOptions(options: AuditOrchestratorOptions): Promise<Resolv
     jurisdiction: options.jurisdiction ?? 'CN_MAINLAND',
     ruleVersion: options.ruleVersion ?? '1.0.0',
     lawKbVersion: options.lawKbVersion ?? 'local-2026-06-12',
+    modelVersion: options.modelVersion ?? 'mock-none',
     locale: options.locale ?? 'zh-CN',
     platform: options.platform ?? 'DEFAULT',
     tenantId: options.tenantId ?? 'SYSTEM',
@@ -260,12 +269,13 @@ export async function auditJobPosting(
       platform: dependencies.platform,
       ruleVersion: dependencies.ruleVersion,
       lawKbVersion: dependencies.lawKbVersion,
+      modelVersion: dependencies.modelVersion,
       evaluatedAt,
     },
     checkerResults,
     createdAt: evaluatedAt,
   };
 
-  dependencies.reflectionChecker.assertValid(result);
+  dependencies.reflectionChecker.assertValid(result, { sourceText: rawText });
   return auditResultSchema.parse(result);
 }
