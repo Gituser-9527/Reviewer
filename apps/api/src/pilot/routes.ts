@@ -8,6 +8,7 @@ import {
   feedbackListQuerySchema,
   pilotListQuerySchema,
   pilotParamsSchema,
+  updatePilotProjectSchema,
 } from './schemas.js';
 
 export interface PilotRoutesDependencies {
@@ -51,8 +52,28 @@ export function registerPilotRoutes(
       hourlyLaborCost: body.hourlyLaborCost,
       ...(body.description === undefined ? {} : { description: body.description }),
       createdBy: body.createdBy ?? actor?.userId ?? 'pilot_operator',
+      stage: body.stage,
+      blockers: body.blockers,
     });
     return reply.code(201).send(project);
+  });
+
+  app.patch('/api/pilots/projects/:id', async (request, reply) => {
+    dependencies.authServices?.authService.requirePermission(request, 'audit:read');
+    const params = pilotParamsSchema.parse(request.params);
+    const existing = service.findProject(params.id);
+    if (existing === undefined) {
+      return reply.code(404).send({ requestId: request.id, error: { code: 'PILOT_PROJECT_NOT_FOUND', message: 'Pilot project was not found.', retryable: false } });
+    }
+    dependencies.authServices?.authService.requireTenantAccess(request, existing.tenantId);
+    const body = updatePilotProjectSchema.parse(request.body);
+    return reply.send(
+      service.updateProject(params.id, {
+        ...(body.stage === undefined ? {} : { stage: body.stage }),
+        ...(body.status === undefined ? {} : { status: body.status }),
+        ...(body.blockers === undefined ? {} : { blockers: body.blockers }),
+      }),
+    );
   });
 
   app.get('/api/pilots/projects/:id', async (request, reply) => {

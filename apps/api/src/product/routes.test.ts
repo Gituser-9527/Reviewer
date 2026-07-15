@@ -203,6 +203,14 @@ describe('productization SaaS/API routes', () => {
     expect(csvResponse.body).toContain('auditId');
     expect(csvResponse.body).toContain(audit.auditId);
 
+    const markdownResponse = await app.inject({
+      method: 'GET',
+      url: `/api/audit/runs/${audit.auditId}/export?tenantId=tenant_saas&format=markdown&locale=en-US`,
+    });
+    expect(markdownResponse.statusCode).toBe(200);
+    expect(markdownResponse.headers['content-type']).toContain('text/markdown');
+    expect(markdownResponse.body).toContain('Job Posting Compliance Audit Report');
+
     const pdfResponse = await app.inject({
       method: 'GET',
       url: `/api/audit/runs/${audit.auditId}/export?tenantId=tenant_saas&format=pdf`,
@@ -210,6 +218,14 @@ describe('productization SaaS/API routes', () => {
     expect(pdfResponse.statusCode).toBe(200);
     expect(pdfResponse.headers['content-type']).toContain('application/pdf');
     expect(pdfResponse.body.slice(0, 8)).toBe('%PDF-1.4');
+
+    const batchCsvResponse = await app.inject({
+      method: 'GET',
+      url: `/api/audit/batch/${batchResponse.json<{ id: string }>().id}/export?locale=zh-CN`,
+    });
+    expect(batchCsvResponse.statusCode).toBe(200);
+    expect(batchCsvResponse.headers['content-type']).toContain('text/csv');
+    expect(batchCsvResponse.body).toContain('batchId');
 
     const docsResponse = await app.inject({
       method: 'GET',

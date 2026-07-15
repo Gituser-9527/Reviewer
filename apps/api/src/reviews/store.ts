@@ -57,6 +57,8 @@ export interface HumanReviewStore {
     id: string,
     input: ResolveRuleSuggestionInput,
   ): Promise<RuleImprovementSuggestion | undefined> | RuleImprovementSuggestion | undefined;
+  /** Deletes all review records owned by a tenant, primarily for demo resets. */
+  deleteByTenant?(tenantId: string): Promise<number> | number;
   /** Clears process-local state for tests. */
   clear(): Promise<void> | void;
   /** Releases resources owned by the store. */
@@ -199,5 +201,22 @@ export class InMemoryHumanReviewStore implements HumanReviewStore {
   clear(): void {
     this.tickets.clear();
     this.suggestions.clear();
+  }
+
+  deleteByTenant(tenantId: string): number {
+    let deleted = 0;
+    for (const [id, ticket] of this.tickets.entries()) {
+      if (ticket.tenantId === tenantId) {
+        this.tickets.delete(id);
+        deleted += 1;
+      }
+    }
+    for (const [id, suggestion] of this.suggestions.entries()) {
+      if (suggestion.tenantId === tenantId) {
+        this.suggestions.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 }

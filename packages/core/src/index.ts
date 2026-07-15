@@ -8,6 +8,8 @@ export * from './ports/knowledge.js';
 export * from './ports/llm-provider.js';
 export * from './ports/review-repository.js';
 export * from './ports/rule-engine.js';
+export * from './byok/index.js';
+export * from './audit-pipeline/index.js';
 export * from './review/types.js';
 export * from './rules/types.js';
 export * from './rules/yaml-rule-engine.js';

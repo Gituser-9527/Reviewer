@@ -5,6 +5,8 @@ import type { AuditRunStore } from '../audit/store.js';
 import type { BetaTrialMode, BetaTrialService } from '../beta-trial/service.js';
 
 export type PilotProjectStatus = 'active' | 'completed' | 'paused';
+export type PilotStage = 'preparation' | 'running' | 'evaluation' | 'decision' | 'converted' | 'closed';
+export type ConversionRecommendation = 'recommended' | 'conditional' | 'not_recommended';
 export type RoiReportFormat = 'markdown' | 'pdf';
 
 export interface PilotProject {
@@ -12,6 +14,8 @@ export interface PilotProject {
   tenantId: string;
   name: string;
   status: PilotProjectStatus;
+  stage: PilotStage;
+  blockers: string[];
   modes: BetaTrialMode[];
   startDate: string;
   endDate: string;
@@ -66,6 +70,12 @@ export interface RoiReport {
   createdAt: string;
 }
 
+export interface PilotConversionAssessment {
+  recommendation: ConversionRecommendation;
+  reasons: string[];
+  evaluatedAt: string;
+}
+
 export interface CustomerFeedback {
   id: string;
   pilotProjectId: string;
@@ -88,6 +98,14 @@ export interface CreatePilotProjectInput {
   hourlyLaborCost?: number;
   description?: string;
   createdBy?: string;
+  stage?: PilotStage;
+  blockers?: string[];
+}
+
+export interface UpdatePilotProjectInput {
+  stage?: PilotStage;
+  status?: PilotProjectStatus;
+  blockers?: string[];
 }
 
 export interface AddCustomerFeedbackInput {
@@ -200,6 +218,8 @@ export class PilotRoiService {
       tenantId: input.tenantId,
       name: redactSensitiveText(input.name),
       status: 'active',
+      stage: input.stage ?? 'preparation',
+      blockers: (input.blockers ?? []).map((item) => redactSensitiveText(item)),
       modes: input.modes ?? ['shadow_mode', 'assist_mode'],
       startDate: input.startDate,
       endDate: input.endDate,
@@ -229,12 +249,29 @@ export class PilotRoiService {
     return project === undefined ? undefined : structuredClone(project);
   }
 
+  updateProject(id: string, input: UpdatePilotProjectInput): PilotProject | undefined {
+    const project = this.projects.get(id);
+    if (project === undefined) return undefined;
+    const updated: PilotProject = {
+      ...project,
+      ...(input.stage === undefined ? {} : { stage: input.stage }),
+      ...(input.status === undefined ? {} : { status: input.status }),
+      ...(input.blockers === undefined
+        ? {}
+        : { blockers: input.blockers.map((item) => redactSensitiveText(item)) }),
+      updatedAt: nowIso(),
+    };
+    this.projects.set(id, structuredClone(updated));
+    return structuredClone(updated);
+  }
+
   async getDashboard(id: string): Promise<
     | {
         project: PilotProject;
         dailyMetrics: PilotDailyMetrics[];
         report: RoiReport;
         feedback: CustomerFeedback[];
+        conversion: PilotConversionAssessment;
       }
     | undefined
   > {
@@ -247,6 +284,7 @@ export class PilotRoiService {
       dailyMetrics,
       report,
       feedback: this.listFeedback({ pilotProjectId: project.id }),
+      conversion: this.assessConversion(project, report),
     };
   }
 
@@ -361,6 +399,26 @@ export class PilotRoiService {
     ).flat();
     for (const metric of metrics) this.metrics.set(metric.id, structuredClone(metric));
     return metrics.map((metric) => structuredClone(metric));
+  }
+
+  private assessConversion(project: PilotProject, report: RoiReport): PilotConversionAssessment {
+    const reasons: string[] = [];
+    if (project.blockers.length > 0) {
+      reasons.push(`存在 ${project.blockers.length} 个未解决阻塞项。`);
+      return { recommendation: 'not_recommended', reasons, evaluatedAt: nowIso() };
+    }
+    if (report.falseNegativeRate > 0.05 || report.falsePositiveRate > 0.1) {
+      reasons.push('当前误杀或漏判率高于试点转正式的保守阈值。');
+      return { recommendation: 'not_recommended', reasons, evaluatedAt: nowIso() };
+    }
+    if (report.totalJobsAudited >= 100 && report.customerSatisfaction >= 4 && report.falseNegativeRate <= 0.02 && report.falsePositiveRate <= 0.05) {
+      reasons.push('样本量、客户满意度和主要质量指标达到当前建议阈值。');
+      return { recommendation: 'recommended', reasons, evaluatedAt: nowIso() };
+    }
+    if (report.totalJobsAudited < 100) reasons.push('有效审核样本尚不足 100 条，需要继续观察。');
+    if (report.customerSatisfaction < 4) reasons.push('客户满意度尚未达到 4.0 / 5 的建议阈值。');
+    reasons.push('建议保持受控试运行，并结合人工复核、申诉和质量门禁再做决策。');
+    return { recommendation: 'conditional', reasons, evaluatedAt: nowIso() };
   }
 
   private async metricsFor(

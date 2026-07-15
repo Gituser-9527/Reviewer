@@ -3,16 +3,22 @@ import { PostgresAuditRunRepository, PostgresEvalRepository } from '@job-complia
 import type { HealthResponse } from '@job-compliance/shared';
 import { ZodError } from 'zod';
 import { DatabaseAuditRunStore } from './audit/database-store.js';
-import { registerAuditRoutes, type AuditJobHandler } from './audit/routes.js';
+import { defaultAuditJob, registerAuditRoutes, type AuditJobHandler } from './audit/routes.js';
 import { InMemoryAuditRunStore, type AuditRunStore } from './audit/store.js';
 import { registerAppealRoutes } from './appeals/routes.js';
 import { InMemoryAppealStore } from './appeals/store.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { AuthorizationError, createAuthServices, type AuthServices } from './auth/service.js';
+import { registerExtensionAuthRoutes } from './extension-auth/routes.js';
+import { ExtensionAuthService } from './extension-auth/service.js';
+import { registerWebCaptureRoutes } from './web-captures/routes.js';
+import { InMemoryWebCaptureStore } from './web-captures/store.js';
 import { registerBetaProgramRoutes } from './beta-program/routes.js';
 import { BetaProgramService } from './beta-program/service.js';
 import { registerBetaTrialRoutes } from './beta-trial/routes.js';
 import { BetaTrialService } from './beta-trial/service.js';
+import { registerDemoRoutes } from './demo/routes.js';
+import { DemoService } from './demo/service.js';
 import { registerEvalRoutes } from './evals/routes.js';
 import { InMemoryEvalStore, RepositoryEvalStore, type EvalStore } from './evals/store.js';
 import { registerIncidentRoutes } from './incidents/routes.js';
@@ -26,6 +32,8 @@ import { LaunchSecurityComplianceService } from './launch-check/service.js';
 import { registerKnowledgeUpdateRoutes } from './knowledge-update/routes.js';
 import { LawKbUpdateService } from './knowledge-update/service.js';
 import { registerOperationalLogging, type ReadinessCheck, sendMetrics } from './operations.js';
+import { registerOnboardingRoutes } from './onboarding/routes.js';
+import { OnboardingService } from './onboarding/service.js';
 import { registerPerformanceRoutes } from './performance/routes.js';
 import { createPerformanceServices, RateLimitError, type PerformanceServices } from './performance/service.js';
 import { registerPilotRoutes } from './pilot/routes.js';
@@ -45,6 +53,8 @@ import { registerRuntimeRoutes } from './runtime/routes.js';
 import { createRuntimeServices, type RuntimeServices } from './runtime/services.js';
 import { registerTrainingRoutes } from './training/routes.js';
 import { TrainingService } from './training/service.js';
+import { registerTrialRequestRoutes } from './trial-requests/routes.js';
+import { TrialRequestService } from './trial-requests/service.js';
 import { registerUatRoutes } from './uat/routes.js';
 import { UatAcceptanceService } from './uat/service.js';
 
@@ -104,10 +114,14 @@ export interface BuildAppOptions {
   betaProgramService?: BetaProgramService;
   /** Optional reviewer training service used by tests or future persistence adapters. */
   trainingService?: TrainingService;
+  /** Optional onboarding progress service used by tests or future persistence adapters. */
+  onboardingService?: OnboardingService;
   /** Optional incident response and emergency switch service. */
   incidentResponseService?: IncidentResponseService;
   /** Optional UAT acceptance service used by tests or future persistence adapters. */
   uatAcceptanceService?: UatAcceptanceService;
+  /** Optional public trial request service used by tests or future persistence adapters. */
+  trialRequestService?: TrialRequestService;
 }
 
 interface DefaultStores {
@@ -173,13 +187,17 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   }
 
   const runtimeServices = options.runtimeServices ?? createRuntimeServices();
+  const extensionAuthService = new ExtensionAuthService();
+  const webCaptureStore = new InMemoryWebCaptureStore();
   const betaTrialService = options.betaTrialService ?? new BetaTrialService();
   const betaProgramService = options.betaProgramService ?? new BetaProgramService();
   const trainingService = options.trainingService ?? new TrainingService();
+  const onboardingService = options.onboardingService ?? new OnboardingService();
   const incidentResponseService =
     options.incidentResponseService ?? new IncidentResponseService();
   const uatAcceptanceService =
     options.uatAcceptanceService ?? new UatAcceptanceService(betaProgramService);
+  const trialRequestService = options.trialRequestService ?? new TrialRequestService();
   const labelingService = options.labelingService ?? new LabelingService();
   const authServices = options.authServices ?? createAuthServices();
   const launchSecurityService =
@@ -209,6 +227,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       evalStore,
       runtimeServices,
     });
+  const demoService = new DemoService({
+    auditRunStore,
+    reviewStore,
+    evalStore,
+  });
 
   registerOperationalLogging(app);
 
@@ -312,6 +335,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/metrics', async (_request, reply) => sendMetrics(reply));
 
   registerAuthRoutes(app, authServices);
+  registerExtensionAuthRoutes(app, authServices, extensionAuthService);
+
+  registerTrialRequestRoutes(app, { service: trialRequestService });
+
+  registerDemoRoutes(app, {
+    service: demoService,
+    authServices,
+  });
 
   registerAuditRoutes(app, {
     store: auditRunStore,
@@ -323,6 +354,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     performanceServices,
     incidentResponseService,
     ...(options.auditJob === undefined ? {} : { auditJob: options.auditJob }),
+  });
+  registerWebCaptureRoutes(app, {
+    auth: extensionAuthService,
+    store: webCaptureStore,
+    auditStore: auditRunStore,
+    auditJob: options.auditJob ?? defaultAuditJob,
   });
 
   registerReviewRoutes(app, {
@@ -356,6 +393,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerTrainingRoutes(app, {
     trainingService,
     labelingService,
+  });
+
+  registerOnboardingRoutes(app, {
+    onboardingService,
+    authServices,
   });
 
   registerLabelingRoutes(app, {

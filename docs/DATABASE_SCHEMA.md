@@ -1267,13 +1267,21 @@ Beta 交付包是试运行运营层能力，不应直接改变审核结论；所
 
 强制发布、普通发布和门禁相关敏感操作必须同步写入 `audit_operation_logs`。
 
-## 4. 幂等与唯一性
+## 4. 网页职位采集（第 52 轮设计）
+
+待迁移的 `web_job_captures` 为不可变采集快照，至少包含：`id`、`tenant_id`、`source_type`、`page_url`、`page_title`、`adapter_id`、`adapter_version`、`adapter_confidence`、`capture_payload_redacted`、`completeness_score`、`warnings`、`captured_at`、`created_at`。`capture_payload_redacted` 保存经统一脱敏后的 `WebJobCapture`；原始 `rawContent` 默认不落库或审计日志。
+
+`web_capture_corrections` 追加保存人工字段修正：`id`、`capture_id`、`tenant_id`、`field_name`、`previous_value_redacted`、`corrected_value_redacted`、`actor_id`、`created_at`。不得原地更新采集记录。`audit_runs` 增加可空 `capture_id` 外键以关联来源，且继续保留 `rule_version`、`law_kb_version`、模型/Prompt 版本和租户上下文。
+
+所有查询必须显式按 `tenant_id` 过滤；采集 URL、正文与修正内容按数据保留策略处理。迁移实施前须补充 PostgreSQL 约束、索引、回滚方案和跨租户隔离测试。
+
+## 5. 幂等与唯一性
 
 - 建议新增 `idempotency_keys(tenant_id, key, request_hash, review_id, expires_at)`
 - `(tenant_id, external_id)` 不应默认唯一，允许同一岗位多次审核
 - 规则 ID 在一个规则集版本内唯一，并保持跨版本语义稳定
 
-## 5. 数据保留与删除
+## 6. 数据保留与删除
 
 上线前应通过 `data_retention_jobs` 配置：
 
@@ -1285,7 +1293,7 @@ Beta 交付包是试运行运营层能力，不应直接改变审核结论；所
 
 当前 MVP 已提供 `data_deletion_requests` 和 `privacy_export_requests`，生产数据库适配器仍需补充 PostgreSQL 级删除执行和法律保留例外策略。
 
-## 6. 迁移顺序建议
+## 7. 迁移顺序建议
 
 1. 扩展、租户与身份基础表
 2. 规则集与依据表

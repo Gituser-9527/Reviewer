@@ -1,0 +1,811 @@
+{
+  "app": {
+    "name": "招聘合规审核 Agent",
+    "console": "招聘合规审核工作台",
+    "productName": "Compliance Agent",
+    "productSubtitle": "Hiring Risk Console",
+    "principles": "规则优先 · 证据可追溯 · 人工兜底",
+    "betaReady": "Beta 就绪",
+    "uatGate": "UAT 门禁",
+    "killSwitch": "应急开关"
+  },
+  "nav": {
+    "groups": {
+      "workbench": "审核工作台",
+      "quality": "质量治理",
+      "ops": "运营配置"
+    },
+    "overview": { "label": "Dashboard", "description": "全局状态与运营指标" },
+    "jobAudit": { "label": "Audit", "description": "岗位审核工作区" },
+    "reviewQueue": { "label": "Review", "description": "人工复核工作区" },
+    "rules": { "label": "Rules", "description": "规则运营工作区" },
+    "evaluations": { "label": "Evaluation", "description": "评估与质量门禁" },
+    "redTeam": { "label": "红队测试", "description": "红队测试" },
+    "releases": { "label": "发布门禁", "description": "发布门禁" },
+    "monitoring": { "label": "Monitoring", "description": "灰度、指标与告警" },
+    "appeals": { "label": "申诉复审", "description": "申诉复审" },
+    "qa": { "label": "质检中心", "description": "质检中心" },
+    "settings": { "label": "Settings", "description": "租户、权限与配置" }
+  },
+  "routes": {
+    "/": { "title": "岗位审核", "subtitle": "招聘岗位合规审核工作台" },
+    "/overview": { "title": "总览", "subtitle": "审核运营总览" },
+    "/reviews": { "title": "人工复核", "subtitle": "人工复核与反馈闭环" },
+    "/rules": { "title": "规则管理", "subtitle": "规则运营与版本发布" },
+    "/evals": { "title": "评估中心", "subtitle": "评估集、真实样本与失败分析" },
+    "/red-team": { "title": "红队测试", "subtitle": "对抗样本与绕过风险" },
+    "/releases": { "title": "发布门禁", "subtitle": "发布质量门禁" },
+    "/monitoring": { "title": "监控中心", "subtitle": "灰度、指标与告警" },
+    "/appeals": { "title": "申诉复审", "subtitle": "企业申诉与人工复审" },
+    "/qa": { "title": "质检中心", "subtitle": "审核质检和质量问题闭环" },
+    "/settings": { "title": "设置", "subtitle": "租户、权限和系统配置" },
+    "/uat": { "title": "UAT 门禁", "subtitle": "Beta 前最终验收" },
+    "/incidents": { "title": "事故响应", "subtitle": "应急开关与事故复盘" },
+    "/beta-launch": { "title": "Beta 交付", "subtitle": "试运行交付包" },
+    "/beta-trial": { "title": "Beta 试运行", "subtitle": "封闭试运行模式" },
+    "/pilot": { "title": "试点 ROI", "subtitle": "客户试点与 ROI 看板" },
+    "/help-center": { "title": "帮助中心", "subtitle": "培训与操作指南" },
+    "/api-docs": { "title": "API 文档", "subtitle": "外部系统接入说明" },
+    "/landing": { "title": "产品官网", "subtitle": "招聘合规审核 Agent" },
+    "fallback": { "title": "工作台", "subtitle": "招聘合规审核后台" }
+  },
+  "language": {
+    "label": "语言",
+    "zh-CN": "中文",
+    "en-US": "English"
+  },
+  "theme": {
+    "light": "浅色模式",
+    "dark": "暗色模式",
+    "system": "跟随系统",
+    "switchTheme": "切换主题",
+    "currentTheme": "当前主题：{theme}",
+    "selected": "已选中"
+  },
+  "demoMode": {
+    "title": "Demo Mode",
+    "description": "演示模式使用安全模拟数据，不包含真实个人信息或真实企业数据。",
+    "notLoaded": "Demo 数据未加载",
+    "auditCases": "样本",
+    "auditRuns": "审核",
+    "reviewTickets": "复核",
+    "seededAt": "生成时间",
+    "seed": "生成 Demo 数据",
+    "resetAction": "重置 Demo 数据",
+    "processing": "处理中…",
+    "seeded": "Demo 数据已生成。",
+    "reset": "Demo 数据已重置。",
+    "actionFailed": "Demo 操作失败，请确认 API 服务可用。"
+  },
+  "onboarding": {
+    "eyebrow": "首次使用引导",
+    "title": "用三步完成你的第一条合规工作流",
+    "description": "此引导会按当前角色聚焦最常用的工作区。可随时跳过，并通过右下角入口继续。",
+    "continue": "继续引导",
+    "continueLabel": "打开新手引导",
+    "skip": "稍后继续",
+    "complete": "我已了解，开始使用",
+    "saving": "正在保存…",
+    "loadFailed": "新手引导状态加载失败，请稍后重试。",
+    "saveFailed": "无法保存引导状态，请稍后重试。",
+    "help": "帮助中心",
+    "helpTooltip": "查看审核 SOP、风险口径和常见误判案例",
+    "helpCenter": "打开帮助中心与培训材料",
+    "flowLabel": "审核流程",
+    "flow": { "input": "岗位输入", "audit": "规则审核", "evidence": "依据核验", "action": "人工处置" },
+    "tasks": {
+      "REVIEWER": [
+        { "title": "完成一条岗位审核", "description": "从审核台输入岗位，查看命中片段、风险解释和依据。", "action": "前往审核台", "href": "/" },
+        { "title": "处理人工复核", "description": "提交统一口径的结论与反馈，避免污染评估数据。", "action": "打开复核队列", "href": "/reviews" },
+        { "title": "了解申诉复审", "description": "申诉 Agent 仅整理双方依据，最终结论仍由人工完成。", "action": "查看申诉", "href": "/appeals" }
+      ],
+      "RULE_OPERATOR": [
+        { "title": "查看岗位审核结果", "description": "先理解规则命中如何呈现在审核结果中。", "action": "前往审核台", "href": "/" },
+        { "title": "测试 Draft 规则", "description": "在规则工作区验证命中片段、风险类别和建议结论。", "action": "管理规则", "href": "/rules" },
+        { "title": "查看评估基线", "description": "提交发布前先运行评估，关注失败样本与红队结果。", "action": "打开评估中心", "href": "/evals" }
+      ],
+      "COMPLIANCE_MANAGER": [
+        { "title": "浏览审核工作台", "description": "了解业务输入、可追溯 finding 和人工兜底路径。", "action": "前往审核台", "href": "/" },
+        { "title": "审批发布候选", "description": "仅在质量门禁通过后审批规则、知识库或模型配置。", "action": "打开发布门禁", "href": "/releases" },
+        { "title": "关注监控与回滚", "description": "查看异常指标、灰度状态，并在必要时执行回滚。", "action": "查看监控", "href": "/monitoring" }
+      ],
+      "TENANT_ADMIN": [
+        { "title": "体验岗位审核", "description": "先使用示例岗位理解审核输入与报告结构。", "action": "前往审核台", "href": "/" },
+        { "title": "查看人工复核进度", "description": "了解待处理岗位和审核团队反馈状态。", "action": "打开复核队列", "href": "/reviews" },
+        { "title": "查看使用与评估", "description": "在评估中心查看可用的质量基线与失败样本。", "action": "打开评估中心", "href": "/evals" }
+      ],
+      "SUPER_ADMIN": [
+        { "title": "体验岗位审核", "description": "从安全示例岗位开始，理解审核结果与证据链。", "action": "前往审核台", "href": "/" },
+        { "title": "检查运行配置", "description": "确认租户、权限和运行时版本配置保持可追溯。", "action": "打开设置", "href": "/settings" },
+        { "title": "检查监控与发布", "description": "通过质量门禁、灰度和告警保障受控上线。", "action": "查看监控", "href": "/monitoring" }
+      ],
+      "VIEWER": [
+        { "title": "查看岗位审核", "description": "了解审核输入与可解释的风险报告。", "action": "前往审核台", "href": "/" },
+        { "title": "查看复核状态", "description": "查看人工复核进度，不会显示编辑操作。", "action": "打开复核队列", "href": "/reviews" },
+        { "title": "查看监控概览", "description": "关注审核趋势和告警，不会显示敏感操作。", "action": "查看监控", "href": "/monitoring" }
+      ]
+    }
+  },
+  "reportExport": {
+    "label": "导出报告",
+    "pdf": "PDF",
+    "markdown": "Markdown",
+    "csv": "CSV",
+    "exporting": "导出中…",
+    "downloaded": "已开始下载 {format} 报告。",
+    "failed": "报告导出失败，请确认 API 服务可用。"
+  },
+  "landing": {
+    "brand": "招聘合规审核",
+    "navigationLabel": "公开站点导航",
+    "login": "进入工作台",
+    "requestDemo": "申请试用",
+    "nav": { "features": "产品能力", "security": "安全与合规", "apiDocs": "API 文档" },
+    "hero": { "eyebrow": "可解释的招聘合规审核基础设施", "title": "让每一条岗位发布，都有清晰的风险依据。", "description": "将确定性规则、可追溯证据与人工复核串联为一套受控审核流程，帮助平台与企业更早发现招聘合规风险。", "primaryAction": "申请受控试用", "secondaryAction": "查看 API 文档", "note": "审核辅助工具，不替代法律裁判；依据不足时自动进入人工复核。", "visualLabel": "合规审核流程示意", "consoleLabel": "AUDIT SIGNALS / LIVE", "decisionLabel": "建议结论", "decisionNote": "Evidence required", "signalRule": "确定性规则命中", "signalEvidence": "法规与平台依据关联", "signalHuman": "人工复核兜底" },
+    "trustLabel": "平台特性", "trust": ["规则优先", "证据可追溯", "租户隔离", "默认脱敏"],
+    "features": { "eyebrow": "产品能力", "title": "把审核结论变成可执行、可追溯的工作流。", "items": [{ "title": "规则驱动审核", "description": "以 YAML 配置的确定性规则优先识别歧视、收费、隐私和误导性风险。" }, { "title": "证据链与解释", "description": "每个风险项可关联规则、法规或平台依据，方便审核员快速复核。" }, { "title": "人工协同闭环", "description": "高风险与证据不足场景自动导向人工复核，反馈可沉淀为评估与规则改进。" }, { "title": "受控运营", "description": "支持版本、评估、灰度、告警和回滚，让规则调整保持可验证与可审计。" }] },
+    "howItWorks": { "eyebrow": "工作方式", "title": "从岗位文本到可解释的审核报告。", "steps": [{ "title": "接入岗位", "description": "通过工作台或 REST API 提交岗位文本与结构化字段。" }, { "title": "规则与证据核验", "description": "规则引擎先行命中，知识库检索补充可追溯的依据。" }, { "title": "风险聚合", "description": "聚合风险等级、建议动作和改写建议，并进行输出质量检查。" }, { "title": "人工处置与学习", "description": "需要时进入人工复核，反馈反哺评估集和规则运营。" }] },
+    "useCases": { "eyebrow": "使用场景", "title": "为不同招聘流程提供同一套合规语言。", "items": [{ "title": "招聘平台发布前审核", "description": "在岗位发布前识别显性风险，并把需要判断的边界案例交给人工。", "outcome": "降低人工筛查负担" }, { "title": "企业招聘内容自检", "description": "帮助招聘团队理解风险来源，采纳可解释的修改建议后再提交。", "outcome": "减少反复修改" }, { "title": "合规运营与质量治理", "description": "通过评估、红队测试、灰度与质量门禁管理规则和知识库变更。", "outcome": "让变更可验证" }] },
+    "security": { "eyebrow": "安全与合规", "title": "为敏感招聘数据设计的审核运行方式。", "description": "系统默认将敏感信息脱敏后写入审计日志和 LLM 输入，并保留版本、证据与操作轨迹。", "items": ["默认脱敏与敏感字段哈希", "规则、知识库与模型版本可追溯", "租户上下文与角色权限控制", "高风险结论保留规则或证据依据"] },
+    "api": { "eyebrow": "开发者接入", "title": "用稳定的 REST API 接入已有招聘流程。", "description": "支持单条与批量审核、Webhook 回调、报告导出与 Sandbox 试用。", "action": "浏览完整 API 文档", "codeLabel": "审核 API 示例", "code": "const result = await fetch('/v1/audit/job', {\n  method: 'POST',\n  headers: { 'x-api-key': process.env.JCA_API_KEY },\n  body: JSON.stringify({ job: posting })\n});" },
+    "pricing": { "eyebrow": "套餐", "title": "从受控试用开始，按审核量扩展。", "description": "Free Trial、Starter、Pro 与 Enterprise 套餐将根据试点范围和集成方式配置。", "note": "价格与企业版 SLA 以正式报价为准。" },
+    "request": { "eyebrow": "申请试用", "title": "准备好把合规审核接入你的流程了吗？", "description": "留下工作联系方式，我们会根据场景安排受控演示或 Sandbox 接入。", "privacyNote": "提交后仅保存脱敏联系方式与哈希用于去重和跟进，不在本系统保留完整邮箱。", "companyName": "公司名称", "contactName": "联系人", "email": "工作邮箱", "companySize": "团队规模（可选）", "useCase": "希望解决的场景（可选）", "submit": "提交试用申请", "submitting": "正在提交…", "success": "申请已收到，我们会尽快联系你。", "error": "提交失败，请检查 API 服务后重试。" },
+    "footer": { "disclaimer": "本产品提供招聘合规风险辅助，不构成法律意见或法律裁判。", "apiDocs": "API 文档", "login": "进入工作台" }
+  },
+  "apiPortal": { "eyebrow": "DEVELOPER PORTAL", "title": "招聘合规审核 API", "description": "以稳定的 API 接入岗位审核、批量处理、用量查询和审核报告导出。", "quickstart": "快速开始", "requestDemo": "申请 Sandbox", "contents": "目录", "authentication": "认证", "authenticationDescription": "在请求头中携带租户生成的 API Key。请只在服务端环境使用和保存密钥。", "authenticationCode": "Authorization: Bearer jca_xxxx_secret\nx-api-key: jca_xxxx_secret", "endpointsTitle": "核心接口", "endpoints": [{ "method": "POST", "path": "/v1/audit/job", "description": "提交单条岗位审核" }, { "method": "POST", "path": "/v1/audit/batch", "description": "异步提交批量审核" }, { "method": "GET", "path": "/v1/audit/runs/{id}", "description": "查询可追溯审核结果" }, { "method": "GET", "path": "/v1/usage", "description": "查询套餐额度与使用量" }, { "method": "POST", "path": "/v1/webhooks/test", "description": "验证 Webhook 签名与回调" }], "sdkTitle": "TypeScript SDK 示例", "sdkDescription": "当前可用原生 fetch 接入；SDK 包会在正式产品发布时提供。", "sdkCode": "const response = await fetch(`${baseUrl}/v1/audit/job`, {\n  method: 'POST',\n  headers: {\n    'content-type': 'application/json',\n    'x-api-key': apiKey\n  },\n  body: JSON.stringify({ job: posting })\n});\n\nconst audit = await response.json();", "sandboxTitle": "Sandbox 环境", "sandboxDescription": "Sandbox 使用模拟数据与隔离额度，适合验证字段映射、Webhook 和审核结果消费逻辑。", "sandboxAction": "申请 Sandbox", "footer": "接口响应中的枚举保持稳定，展示文案由客户端本地化。", "backHome": "返回产品首页" },
+  "permissions": {
+    "currentRole": "当前角色",
+    "noAccessTitle": "当前角色无权访问此页面",
+    "noAccessDescription": "你可以切换到具备相应权限的角色，或返回 Dashboard 查看可访问的工作区。后端接口仍会进行最终权限校验。",
+    "backToDashboard": "返回 Dashboard",
+    "requiredPermissions": "页面所需权限",
+    "currentPermissions": "当前角色权限",
+    "roles": {
+      "SUPER_ADMIN": "超级管理员",
+      "TENANT_ADMIN": "租户管理员",
+      "COMPLIANCE_MANAGER": "合规经理",
+      "REVIEWER": "审核员",
+      "RULE_OPERATOR": "规则运营",
+      "VIEWER": "只读查看者"
+    },
+    "sensitiveAction": {
+      "eyebrow": "Sensitive Action",
+      "impactScope": "影响范围",
+      "confirmInput": "请输入 {text} 以确认操作",
+      "processing": "处理中…",
+      "cancel": "取消",
+      "publishTitle": "确认发布规则版本",
+      "publishDescription": "发布后，新规则版本会进入线上审核配置，可能影响后续岗位审核结论。",
+      "forcePublishTitle": "确认强制发布规则版本",
+      "forcePublishDescription": "强制发布会绕过常规质量门禁限制，仅应在合规经理确认风险可接受时使用。",
+      "rollbackTitle": "确认回滚规则版本",
+      "rollbackDescription": "回滚会把线上规则切回上一稳定版本，用于快速处理误杀、漏判或异常指标。",
+      "ruleSetImpact": "规则集：{id}",
+      "versionImpact": "目标版本：{version}",
+      "evalImpact": "发布前应已完成 eval / red team 检查",
+      "rollbackImpact": "将恢复到上一 published 版本",
+      "auditImpact": "后续 auditRun 会记录回滚后的 ruleVersion",
+      "releasePublishTitle": "确认发布候选版本",
+      "releasePublishDescription": "发布后会创建灰度计划，并绑定对应的规则、知识库、模型或 Prompt 版本。",
+      "releaseCandidateImpact": "发布候选：{id}",
+      "releaseTargetImpact": "发布对象：{target}",
+      "rolloutCreateTitle": "确认创建灰度计划",
+      "rolloutCreateDescription": "灰度计划会影响指定租户或比例范围内的版本选择，创建前请确认 stable 与 candidate 版本。",
+      "rolloutRollbackTitle": "确认回滚灰度计划",
+      "rolloutRollbackDescription": "回滚会将该灰度计划切回 stableVersion，用于快速处理异常指标或质量问题。",
+      "rolloutImpact": "灰度目标：{target}",
+      "rolloutPercentImpact": "灰度比例：{percent}%",
+      "humanDecisionTitle": "确认提交人工复核结论",
+      "humanDecisionDescription": "人工结论会影响复核单状态，并可能反哺评估集或规则改进建议。",
+      "humanDecisionImpact": "人工结论：{decision}",
+      "reviewTicketImpact": "复核单：{id}",
+      "publish": "确认发布",
+      "forcePublish": "确认强制发布",
+      "rollback": "确认回滚",
+      "createRollout": "确认创建灰度",
+      "submitDecision": "确认提交结论"
+    }
+  },
+  "enums": {
+    "decision": {
+      "PASS": "通过",
+      "REJECT": "拦截",
+      "MANUAL_REVIEW": "人工复核",
+      "ALLOW_WITH_WARNING": "警告后允许",
+      "NEED_MORE_INFO": "需要补充信息"
+    },
+    "riskLevel": {
+      "NONE": "无风险",
+      "LOW": "低风险",
+      "MEDIUM": "中风险",
+      "HIGH": "高风险",
+      "CRITICAL": "严重风险"
+    },
+    "severity": {
+      "LOW": "低风险",
+      "MEDIUM": "中风险",
+      "HIGH": "高风险",
+      "CRITICAL": "严重风险"
+    },
+    "riskCategory": {
+      "DISCRIMINATION": "就业歧视",
+      "FEE_DEPOSIT": "收费与押金",
+      "PRIVACY": "个人信息与隐私",
+      "FALSE_OR_MISLEADING": "虚假或误导信息",
+      "INCOMPLETE_INFORMATION": "信息不完整",
+      "LABOR_CONTRACT_RISK": "劳动合同风险",
+      "PLATFORM_POLICY": "平台规则",
+      "OTHER": "其他风险"
+    },
+    "reviewDecision": {
+      "APPROVE": "通过发布",
+      "REJECT": "拦截岗位",
+      "REQUEST_REVISION": "要求修改"
+    },
+    "feedbackType": {
+      "FALSE_POSITIVE": "误杀",
+      "FALSE_NEGATIVE": "漏判",
+      "WRONG_CATEGORY": "类别错误",
+      "WRONG_SEVERITY": "等级错误",
+      "WRONG_EVIDENCE": "依据错误",
+      "BAD_REWRITE": "改写不安全",
+      "RULE_TOO_BROAD": "规则过宽",
+      "RULE_TOO_NARROW": "规则过窄",
+      "NEEDS_NEW_RULE": "需要新规则",
+      "VALID_RESULT": "结果有效"
+    }
+  },
+  "auditWorkbench": {
+    "hero": {
+      "eyebrow": "Job Audit Workbench",
+      "title": "岗位审核工作台",
+      "description": "在同一个界面完成岗位输入、风险定位、依据查看、改写采纳和人工反馈，帮助审核员不用阅读原始 JSON 也能判断下一步。"
+    },
+    "input": {
+      "eyebrow": "Input",
+      "title": "岗位输入",
+      "required": "带 * 为必填",
+      "jobTitle": "岗位标题 *",
+      "jobTitlePlaceholder": "例如：行政专员",
+      "companyName": "公司名称 *",
+      "companyNamePlaceholder": "例如：某某科技有限公司",
+      "location": "工作地点",
+      "locationPlaceholder": "例如：北京",
+      "salary": "薪资",
+      "salaryPlaceholder": "例如：8k-15k",
+      "employmentType": "用工类型",
+      "employmentTypes": {
+        "fullTime": "全职",
+        "partTime": "兼职",
+        "internship": "实习",
+        "contract": "劳务 / 合同制"
+      },
+      "description": "岗位描述 *",
+      "descriptionPlaceholder": "粘贴完整岗位描述，包括岗位职责、任职要求、福利待遇及其他说明……",
+      "useDemoCase": "填入 Demo 样本",
+      "submit": "开始审核",
+      "submitting": "正在审核…"
+    },
+    "actions": {
+      "reset": "重置",
+      "copied": "已复制",
+      "copyRewrite": "复制改写",
+      "copySummary": "复制摘要",
+      "feedback": "提交反馈",
+      "saveEval": "保存为评估样本",
+      "reaudit": "重新审核",
+      "highRiskTitle": "需要重点处理",
+      "highRiskDescription": "当前结论包含拦截或人工复核建议，请优先查看命中片段与依据。",
+      "readyTitle": "可继续处理",
+      "readyDescription": "当前结果可用于审核记录、反馈沉淀或企业修改沟通。",
+      "close": "关闭",
+      "cancel": "取消"
+    },
+    "result": {
+      "riskScore": "风险分",
+      "scoreEstimated": "基于风险等级估算",
+      "scoreProvided": "来自审核结果",
+      "decision": "审核结论",
+      "riskLevel": "风险等级",
+      "findingCount": "风险项",
+      "auditId": "审核编号",
+      "createdAt": "生成时间",
+      "loadingLabel": "审核结果加载中"
+    },
+    "finding": {
+      "eyebrow": "Findings",
+      "title": "风险明细",
+      "matchedText": "命中原文",
+      "noMatchedText": "无可展示的原文片段",
+      "reason": "风险解释",
+      "suggestion": "修改建议",
+      "defaultSuggestion": "请结合规则依据进行人工复核和修改。",
+      "ruleId": "规则",
+      "decision": "建议结论",
+      "confidence": "置信度",
+      "evidenceCount": "依据数量"
+    },
+    "common": {
+      "unlinked": "未关联"
+    },
+    "evidence": {
+      "eyebrow": "Evidence",
+      "title": "依据详情",
+      "drawerTitle": "依据详情抽屉",
+      "openDrawer": "展开依据",
+      "emptyTitle": "暂无关联依据",
+      "emptyDescription": "当前 finding 未返回法规、平台规则或内部规范依据，请人工确认后再沉淀。",
+      "noQuote": "当前依据没有可展示摘录。",
+      "id": "依据 ID",
+      "version": "版本",
+      "url": "来源"
+    },
+    "rewrite": {
+      "eyebrow": "Rewrite",
+      "title": "合规改写",
+      "emptyTitle": "暂无改写文案",
+      "emptyDescription": "当前审核结果未生成改写，或该岗位无需改写。"
+    },
+    "feedback": {
+      "eyebrow": "Feedback",
+      "title": "人工反馈",
+      "type": "反馈类型",
+      "comment": "反馈说明",
+      "placeholder": "说明误杀、漏判、依据问题或需要新增规则的原因……",
+      "submit": "提交反馈"
+    },
+    "source": {
+      "eyebrow": "Source",
+      "title": "原文定位",
+      "highlightHint": "点击风险项可定位"
+    },
+    "report": {
+      "auditId": "审核编号",
+      "decision": "审核结论",
+      "risk": "风险等级",
+      "summary": "风险摘要",
+      "findings": "风险明细",
+      "noFindings": "风险明细：无"
+    },
+    "empty": {
+      "title": "等待审核",
+      "description": "在左侧输入岗位信息并点击开始审核，结果会以卡片形式展示在这里。"
+    },
+    "noRisk": {
+      "title": "未发现当前规则集可识别的岗位风险",
+      "description": "仍建议保留人工抽检机制，并在新风险样本出现时补充评估集。"
+    },
+    "errors": {
+      "title": "审核失败",
+      "auditFailedStatus": "审核请求失败，HTTP 状态码：{status}",
+      "auditFailed": "审核请求失败，请稍后重试。",
+      "saveEvalFailed": "保存评估样本失败，请确认评估服务可用。"
+    },
+    "notices": {
+      "summaryCopied": "审核报告摘要已复制。",
+      "evalSaved": "已保存为评估样本。",
+      "feedbackSubmitted": "反馈已记录在当前页面，后续可绑定人工复核工单落库。",
+      "demoCaseLoaded": "已填入 Demo 样本：{title}"
+    },
+    "eval": {
+      "datasetName": "Web 工作台沉淀样本",
+      "datasetDescription": "由岗位审核工作台手动保存的评估样本"
+    }
+  },
+  "dashboard": {
+    "hero": {
+      "eyebrow": "Dashboard",
+      "title": "招聘合规运营驾驶舱",
+      "description": "汇总审核量、自动化比例、风险分布、版本状态、告警和成本，让团队进入系统后先看清整体健康度。"
+    },
+    "metrics": {
+      "todayAudits": "今日审核量",
+      "autoPassRate": "自动通过率",
+      "autoRejectRate": "自动拦截率",
+      "manualReviewRate": "人工复核率",
+      "criticalRiskCount": "严重风险数量",
+      "currentVersion": "当前稳定版本",
+      "activeAlerts": "活跃告警数",
+      "todayLlmCost": "今日 LLM 成本",
+      "costHelper": "按租户成本记录汇总",
+      "fromAuditRuns": "来自当前租户审核记录",
+      "generatedAt": "指标生成时间"
+    },
+    "runtime": {
+      "title": "运行环境",
+      "description": "当前审核使用的稳定版本，仅用于运行追溯。",
+      "ruleVersion": "规则版本",
+      "lawKbVersion": "知识库版本",
+      "modelVersion": "模型版本"
+    },
+    "charts": {
+      "auditTrend": "最近 7 天审核趋势",
+      "riskDistribution": "风险类型分布",
+      "decisionDistribution": "决策结果分布",
+      "topRules": "Top 规则命中",
+      "feedbackDistribution": "人工反馈类型分布",
+      "alertTrend": "告警趋势",
+      "alerts": "告警列表"
+    },
+    "chartEyebrows": {
+      "trend": "Trend",
+      "risk": "Risk",
+      "decision": "Decision",
+      "feedback": "Feedback",
+      "alerts": "Alerts",
+      "rules": "Rules"
+    },
+    "workspaces": {
+      "audit": "Audit 工作区",
+      "auditDescription": "提交岗位、查看风险、采纳改写",
+      "review": "Review 工作区",
+      "reviewDescription": "处理人工复核、沉淀反馈",
+      "rules": "Rules 工作区",
+      "rulesDescription": "管理规则、测试、发布与回滚",
+      "evaluation": "Evaluation 工作区",
+      "evaluationDescription": "运行评估、红队与发布门禁",
+      "appeals": "Appeals 工作区",
+      "appealsDescription": "处理企业申诉、复审和规则反馈",
+      "qa": "QA 工作区",
+      "qaDescription": "抽样质检、发现质量问题并反哺评估集",
+      "monitoring": "Monitoring 工作区",
+      "monitoringDescription": "查看灰度、监控和告警",
+      "settings": "Settings 工作区",
+      "settingsDescription": "管理租户、权限和运行配置"
+    },
+    "tables": {
+      "search": "搜索",
+      "filter": "筛选",
+      "all": "全部",
+      "ruleId": "规则 ID",
+      "hitCount": "命中次数",
+      "status": "状态",
+      "alert": "告警",
+      "severity": "级别",
+      "createdAt": "创建时间",
+      "active": "活跃",
+      "idle": "空闲",
+      "critical": "严重",
+      "warning": "警告",
+      "open": "打开",
+      "resolved": "已解决"
+    },
+    "empty": {
+      "noTrend": "暂无最近 7 天审核数据",
+      "noRisk": "暂无风险类型分布",
+      "noDecision": "暂无决策结果分布",
+      "noRules": "暂无规则命中数据",
+      "noFeedback": "暂无人工反馈类型分布",
+      "noAlertTrend": "暂无告警趋势数据",
+      "noAlerts": "暂无告警",
+      "noAlertsDescription": "当前没有需要处理的监控告警。"
+    },
+    "errors": {
+      "title": "Dashboard 加载失败",
+      "loadFailed": "运营总览加载失败，请确认 API 服务可用。"
+    }
+  },
+  "workspacePages": {
+    "reviewQueue": {
+      "brandTitle": "人工复核台",
+      "brandSubtitle": "Human Review Queue",
+      "eyebrow": "Manual review",
+      "title": "把人的判断，变成下一轮改进的燃料。",
+      "description": "复核结论可同步进入评估集，也可以沉淀为规则改进建议。MVP 使用固定 reviewerId。",
+      "defaultComment": "请企业按 Agent 建议修改岗位文案后重新提交。",
+      "defaultDisputeResolution": "高级审核员已裁决。",
+      "defaultRuleResolution": "已记录，待规则发布流程统一处理。",
+      "nav": {
+        "audit": "返回审核台",
+        "evals": "评估台",
+        "betaTrial": "封闭试运行"
+      },
+      "errors": {
+        "ruleSuggestionsLoadFailed": "规则建议加载失败。",
+        "permissionLoadFailed": "权限信息加载失败。",
+        "referenceLoadFailed": "标注说明加载失败。",
+        "statsLoadFailed": "一致率统计加载失败。",
+        "disputesLoadFailed": "争议样本加载失败。",
+        "trainingLoadFailed": "培训状态加载失败。",
+        "ticketsLoadFailed": "复核单加载失败。",
+        "addToEvalFailed": "加入评估集失败。",
+        "createSuggestionFailed": "规则建议创建失败。",
+        "decisionSubmitFailed": "人工结论提交失败。",
+        "multiLabelSubmitFailed": "多人标注提交失败。",
+        "disputeResolveFailed": "争议裁决失败。",
+        "suggestionResolveFailed": "规则建议处理失败。",
+        "trainingCompleteFailed": "培训确认失败。"
+      },
+      "notices": {
+        "decisionSubmitted": "已提交人工结论：{decision}",
+        "labelSubmitted": "已提交 {reviewerId} 的标注。",
+        "disputeResolved": "争议样本已裁决。",
+        "suggestionResolved": "规则建议已标记为已处理。",
+        "trainingCompleted": "培训确认已记录。"
+      },
+      "training": {
+        "eyebrow": "Training required",
+        "title": "首次使用前请完成培训确认",
+        "description": "为避免错误反馈污染评估集，请先阅读帮助中心里的反馈类型定义、常见误判案例和申诉处理指南。",
+        "openHelp": "打开帮助中心",
+        "confirm": "我已完成阅读"
+      },
+      "pending": {
+        "eyebrow": "Pending",
+        "title": "待复核列表",
+        "loading": "正在加载复核单…",
+        "empty": "当前没有待复核单。"
+      },
+      "status": {
+        "pending": "待复核",
+        "completed": "已完成"
+      },
+      "agentConclusion": {
+        "eyebrow": "Agent conclusion"
+      },
+      "facts": {
+        "agentDecision": "Agent 结论",
+        "riskLevel": "风险等级",
+        "status": "状态"
+      },
+      "findings": {
+        "eyebrow": "Findings",
+        "title": "风险详情与命中片段",
+        "matchedText": "原文命中片段",
+        "noMatchedText": "无可展示片段",
+        "explanation": "风险解释",
+        "suggestion": "Agent 建议",
+        "defaultSuggestion": "建议人工确认后处理。"
+      },
+      "evidence": {
+        "eyebrow": "Evidence",
+        "title": "依据展示",
+        "noQuote": "未提供摘录"
+      },
+      "feedback": {
+        "eyebrow": "Feedback",
+        "title": "人工最终结论",
+        "reviewerId": "审核员 ID",
+        "finalDecision": "标注结论",
+        "feedbackType": "反馈类型 ⓘ",
+        "feedbackTypeTooltip": "请选择最能解释人工结论与 Agent 输出差异的类型，避免把主观偏好写入评估集。",
+        "riskLevel": "风险等级",
+        "categories": "风险类别，逗号分隔",
+        "addToEval": "加入评估集",
+        "createSuggestion": "生成规则改进建议",
+        "comment": "复核意见",
+        "currentType": "当前反馈类型：{type}。",
+        "defaultTypeMeaning": "请选择清晰的反馈类型。",
+        "viewDefinitions": "查看完整定义",
+        "submitMultiLabel": "提交多人标注",
+        "noPermission": "当前角色没有提交人工复核或标注的权限。",
+        "submitted": "已提交：{decision}",
+        "noComment": "无补充意见"
+      },
+      "noSelected": "请选择一个复核单查看详情。",
+      "guide": {
+        "eyebrow": "Labeling guide",
+        "riskTitle": "风险等级解释",
+        "feedbackEyebrow": "Feedback",
+        "feedbackTitle": "反馈类型说明",
+        "agreementEyebrow": "Agreement",
+        "agreementTitle": "审核员一致率",
+        "agreementSummary": "一致 {agree} / 不一致 {disagree}",
+        "noAgreementStats": "暂无多人标注统计。"
+      },
+      "disputes": {
+        "eyebrow": "Disputes",
+        "title": "争议样本池",
+        "labelCount": "标注数 {count}",
+        "resolveWithCurrentLabel": "按当前标签裁决",
+        "empty": "暂无争议样本。"
+      },
+      "suggestions": {
+        "eyebrow": "Rule suggestions",
+        "title": "规则改进建议",
+        "resolve": "标记已处理",
+        "empty": "暂无开放的规则改进建议。"
+      }
+    },
+    "settings": {
+      "eyebrow": "Settings",
+      "title": "系统设置",
+      "description": "集中管理租户、权限、API Key、运行配置、数据保留和安全策略。",
+      "tenantHelper": "所有数据访问需显式 tenantId",
+      "rbacHelper": "按角色限制敏感操作",
+      "privacyHelper": "日志和 LLM 输入默认脱敏",
+      "emptyTitle": "设置中心页面预留",
+      "emptyDescription": "真实生产接入前，应在此接入身份系统、租户配置、API Key 和数据保留策略。"
+    },
+    "qa": {
+      "eyebrow": "QA",
+      "title": "审核质检中心",
+      "description": "定期抽样检查 Agent 审核、人工复核、申诉处理、依据引用和改写安全。",
+      "samplingHelper": "支持随机与高风险优先",
+      "issuesHelper": "可沉淀规则改进建议",
+      "regressionHelper": "失败样本可进入评估集",
+      "emptyTitle": "质检任务页面预留",
+      "emptyDescription": "当前后端 QA inspection API 已具备 MVP 能力；后续可在此创建质检任务和查看质量问题。"
+    },
+    "redTeam": {
+      "eyebrow": "Red Team",
+      "title": "红队对抗测试",
+      "description": "用于追踪隐晦表达、规避话术、Prompt Injection 和规则绕过样本。",
+      "datasetHelper": "内置对抗样本目标",
+      "scriptHelper": "发布前可选运行",
+      "targetHelper": "关注系统被绕过样本",
+      "emptyTitle": "红队详情页预留",
+      "emptyDescription": "当前可通过命令行运行 npm run eval:redteam；失败样本可进入评估集或规则改进建议。"
+    },
+    "appeals": {
+      "eyebrow": "Appeals",
+      "title": "申诉复审中心",
+      "description": "企业申诉必须由人工复审员最终决定，Appeal Agent 仅提供两侧理由和证据整理。",
+      "agentRoleHelper": "不能自动推翻原结论",
+      "finalHelper": "最终决定必须人工复审",
+      "feedbackHelper": "成功申诉可反哺评估集",
+      "emptyTitle": "申诉列表页面预留",
+      "emptyDescription": "后端申诉能力已接入；产品化阶段可在此展示企业申诉、补充说明和复审报告。"
+    },
+    "monitoring": {
+      "brandTitle": "岗位合规审核台",
+      "brandSubtitle": "Monitoring & Rollout",
+      "navAudit": "审核台",
+      "navRules": "规则管理",
+      "navEvals": "评估台",
+      "navReleases": "发布门禁",
+      "heroEyebrow": "Operations",
+      "heroTitle": "监控灰度与快速回滚。",
+      "heroDescription": "查看审核指标、规则版本分布、灰度计划和告警事件，支持运营侧一键回滚。",
+      "requestFailed": "请求失败（HTTP {status}）",
+      "loadFailed": "加载监控数据失败。",
+      "createSuccess": "灰度计划已创建。",
+      "createFailed": "创建灰度计划失败。",
+      "rollbackSuccess": "已回滚到 stableVersion。",
+      "rollbackFailed": "回滚失败。",
+      "noManagePermission": "当前角色没有创建灰度计划权限。",
+      "metricsTitle": "监控总览",
+      "versionsTitle": "规则版本分布",
+      "auditCount": "{count} 次审核",
+      "noVersionDistribution": "暂无审核版本分布。",
+      "newRolloutEyebrow": "New rollout",
+      "newRolloutTitle": "创建灰度计划",
+      "target": "目标",
+      "ruleVersion": "规则版本",
+      "lawKbVersion": "知识库版本",
+      "modelVersion": "模型版本",
+      "creating": "创建中…",
+      "createRollout": "创建灰度计划",
+      "rolloutsTitle": "灰度计划列表",
+      "rollbackStable": "回滚到 stableVersion",
+      "noRollouts": "暂无灰度计划。",
+      "alertsTitle": "告警列表",
+      "noAlerts": "暂无告警。"
+    }
+  },
+  "common": {
+    "status": {
+      "enabled": "启用",
+      "disabled": "禁用",
+      "loading": "加载中…",
+      "empty": "暂无数据",
+      "notRecorded": "未记录"
+    },
+    "actions": {
+      "create": "创建",
+      "save": "保存",
+      "edit": "编辑",
+      "cancel": "取消",
+      "delete": "删除",
+      "publish": "发布",
+      "rollback": "回滚",
+      "copy": "复制",
+      "submit": "提交",
+      "close": "关闭",
+      "confirm": "确认",
+      "search": "搜索",
+      "filter": "筛选"
+    },
+    "errors": {
+      "requestFailed": "请求失败（HTTP {status}）",
+      "unknown": "操作失败，请稍后重试。"
+    },
+    "validation": {
+      "required": "请填写必填项。",
+      "maxLength": "内容过长，请缩短后重试。",
+      "invalidJsonl": "JSONL 格式不正确。"
+    },
+    "toast": {
+      "saved": "已保存。",
+      "copied": "已复制。",
+      "submitted": "已提交。",
+      "created": "已创建。",
+      "updated": "已更新。"
+    }
+  },
+  "legacy": {
+    "岗位合规审核台": "岗位合规审核台",
+    "Job Compliance Review": "Job Compliance Review",
+    "New audit": "New audit",
+    "发布之前，先把风险说清楚。": "发布之前，先把风险说清楚。",
+    "输入岗位原文，系统将基于当前规则集检查歧视、收费、隐私、误导与信息完整性风险。": "输入岗位原文，系统将基于当前规则集检查歧视、收费、隐私、误导与信息完整性风险。",
+    "岗位信息": "岗位信息",
+    "带 * 的字段为必填项": "带 * 的字段为必填项",
+    "岗位标题 *": "岗位标题 *",
+    "公司名称 *": "公司名称 *",
+    "工作地点": "工作地点",
+    "薪资": "薪资",
+    "用工类型": "用工类型",
+    "岗位描述 *": "岗位描述 *",
+    "开始审核": "开始审核",
+    "正在审核…": "正在审核…",
+    "审核说明": "审核说明",
+    "输入": "输入",
+    "输出": "输出",
+    "审核结论": "审核结论",
+    "风险等级": "风险等级",
+    "风险项": "风险项",
+    "审核编号": "审核编号",
+    "风险明细": "风险明细",
+    "修改建议汇总": "修改建议汇总",
+    "规则与依据": "规则与依据",
+    "合规改写": "合规改写",
+    "命中的原文片段": "命中的原文片段",
+    "风险解释": "风险解释",
+    "修改建议": "修改建议",
+    "未发现当前规则集可识别的岗位风险。": "未发现当前规则集可识别的岗位风险。",
+    "人工复核台": "人工复核台",
+    "规则管理后台": "规则管理后台",
+    "评估台": "评估台",
+    "监控灰度": "监控灰度",
+    "封闭试运行": "封闭试运行",
+    "帮助中心": "帮助中心",
+    "事故演练与应急控制台": "事故演练与应急控制台",
+    "UAT 验收总览": "UAT 验收总览",
+    "创建 Beta 项目": "创建 Beta 项目",
+    "Beta 试运行总览": "Beta 试运行总览",
+    "使用模式配置": "使用模式配置",
+    "使用人员名单": "使用人员名单",
+    "每日测试报告": "每日测试报告",
+    "检查表": "检查表",
+    "问题反馈列表": "问题反馈列表",
+    "规则集": "规则集",
+    "规则列表": "规则列表",
+    "规则测试": "规则测试",
+    "发布记录": "发布记录",
+    "规则改进建议": "规则改进建议",
+    "监控总览": "监控总览",
+    "规则版本分布": "规则版本分布",
+    "创建灰度计划": "创建灰度计划",
+    "灰度计划列表": "灰度计划列表",
+    "告警列表": "告警列表",
+    "无风险": "无风险",
+    "低风险": "低风险",
+    "中风险": "中风险",
+    "高风险": "高风险",
+    "严重风险": "严重风险",
+    "通过": "通过",
+    "拦截": "拦截",
+    "人工复核": "人工复核",
+    "警告后允许": "警告后允许",
+    "需要补充信息": "需要补充信息",
+    "例如：行政专员": "例如：行政专员",
+    "例如：某某科技有限公司": "例如：某某科技有限公司",
+    "例如：北京": "例如：北京",
+    "例如：8k-15k": "例如：8k-15k",
+    "粘贴完整岗位描述，包括岗位职责、任职要求、福利待遇及其他说明……": "粘贴完整岗位描述，包括岗位职责、任职要求、福利待遇及其他说明……",
+    "全职": "全职",
+    "兼职": "兼职",
+    "实习": "实习",
+    "劳务 / 合同制": "劳务 / 合同制",
+    "当前审核未返回法规或规则依据。": "当前审核未返回法规或规则依据。",
+    "无可展示的原文片段": "无可展示的原文片段",
+    "请结合规则依据进行人工复核和修改。": "请结合规则依据进行人工复核和修改。",
+    "未关联": "未关联",
+    "规则": "规则",
+    "结论": "结论",
+    "版本": "版本",
+    "未标注版本": "未标注版本",
+    "来源字段": "来源字段"
+  }
+}

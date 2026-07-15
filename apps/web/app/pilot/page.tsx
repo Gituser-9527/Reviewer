@@ -9,6 +9,8 @@ interface PilotProject {
   tenantId: string;
   name: string;
   status: string;
+  stage: string;
+  blockers: string[];
   modes: PilotMode[];
   startDate: string;
   endDate: string;
@@ -62,6 +64,7 @@ interface PilotDashboard {
   dailyMetrics: PilotDailyMetrics[];
   report: RoiReport;
   feedback: CustomerFeedback[];
+  conversion: { recommendation: 'recommended' | 'conditional' | 'not_recommended'; reasons: string[]; evaluatedAt: string };
 }
 
 const modeLabels: Record<PilotMode, string> = {
@@ -102,6 +105,7 @@ export default function PilotPage() {
     contactName: '',
     comment: '',
   });
+  const [operationsForm, setOperationsForm] = useState({ stage: 'preparation', blockers: '' });
 
   const loadProjects = async () => {
     const payload = await fetchJson<{ items: PilotProject[] }>('/api/pilots/projects');
@@ -125,6 +129,27 @@ export default function PilotPage() {
     setError(null);
     const detail = await fetchJson<PilotDashboard>(`/api/pilots/projects/${id}/dashboard`);
     setDashboard(detail);
+    setOperationsForm({ stage: detail.project.stage, blockers: detail.project.blockers.join('\n') });
+  };
+
+  const updateOperations = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (selectedId === null) return;
+    setError(null);
+    try {
+      const project = await fetchJson<PilotProject>(`/api/pilots/projects/${selectedId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage: operationsForm.stage,
+          blockers: operationsForm.blockers.split('\n').map((item) => item.trim()).filter(Boolean),
+        }),
+      });
+      setNotice(`已更新试点阶段：${project.stage}。`);
+      await selectProject(project.id);
+      await loadProjects();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '更新试点运营状态失败。');
+    }
   };
 
   const createProject = async (event: FormEvent<HTMLFormElement>) => {
@@ -323,7 +348,7 @@ export default function PilotPage() {
                 <span>{project.status}</span>
                 <strong>{project.name}</strong>
                 <small>
-                  {project.tenantId} · {project.startDate} 至 {project.endDate}
+                  {project.tenantId} · {project.stage} · {project.startDate} 至 {project.endDate}
                 </small>
               </button>
             ))}
@@ -363,6 +388,22 @@ export default function PilotPage() {
               <dt>customerSatisfaction</dt>
               <dd>{report?.customerSatisfaction.toFixed(1) ?? '0.0'}</dd>
             </div>
+            <div>
+              <dt>autoRejectRate</dt>
+              <dd>{asPercent(aggregate?.autoRejectRate ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>falsePositiveRate</dt>
+              <dd>{asPercent(report?.falsePositiveRate ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>falseNegativeRate</dt>
+              <dd>{asPercent(report?.falseNegativeRate ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>appealRate</dt>
+              <dd>{asPercent(report?.appealRate ?? 0)}</dd>
+            </div>
           </dl>
         </article>
 
@@ -398,6 +439,35 @@ export default function PilotPage() {
       </section>
 
       <section className="monitoring-grid monitoring-grid--wide">
+        <article className="monitoring-panel">
+          <div className="section-heading section-heading--stack">
+            <p className="section-label">Conversion</p>
+            <h2>转正式建议</h2>
+          </div>
+          <p className={`pilot-conversion pilot-conversion--${dashboard?.conversion.recommendation ?? 'conditional'}`}>
+            {dashboard?.conversion.recommendation === 'recommended'
+              ? '建议转为正式使用'
+              : dashboard?.conversion.recommendation === 'not_recommended'
+                ? '暂不建议转正式'
+                : '建议继续受控试运行'}
+          </p>
+          <div className="ops-list">
+            {(dashboard?.conversion.reasons ?? []).map((reason) => <article key={reason}><span>{reason}</span></article>)}
+          </div>
+          <form className="rule-form" onSubmit={updateOperations}>
+            <label>
+              <span>试点阶段</span>
+              <select value={operationsForm.stage} onChange={(event) => setOperationsForm((current) => ({ ...current, stage: event.target.value }))}>
+                <option value="preparation">Preparation</option><option value="running">Running</option><option value="evaluation">Evaluation</option><option value="decision">Decision</option><option value="converted">Converted</option><option value="closed">Closed</option>
+              </select>
+            </label>
+            <label>
+              <span>阻塞问题（每行一项）</span>
+              <textarea value={operationsForm.blockers} onChange={(event) => setOperationsForm((current) => ({ ...current, blockers: event.target.value }))} />
+            </label>
+            <button className="ghost-button" type="submit" disabled={selectedId === null}>更新运营状态</button>
+          </form>
+        </article>
         <article className="monitoring-panel">
           <div className="section-heading section-heading--stack">
             <p className="section-label">Modes</p>

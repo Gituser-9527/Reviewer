@@ -7,37 +7,37 @@ import type {
 } from '@job-compliance/shared';
 
 export const decisionLabels: Record<AuditDecision, string> = {
-  PASS: '通过',
-  REJECT: '拦截',
-  MANUAL_REVIEW: '人工复核',
-  ALLOW_WITH_WARNING: '警告后允许',
-  NEED_MORE_INFO: '需要补充信息',
+  PASS: 'Pass',
+  REJECT: 'Reject',
+  MANUAL_REVIEW: 'Manual review',
+  ALLOW_WITH_WARNING: 'Allow with warning',
+  NEED_MORE_INFO: 'Need more info',
 };
 
 export const severityLabels: Record<Severity, string> = {
-  LOW: '低风险',
-  MEDIUM: '中风险',
-  HIGH: '高风险',
-  CRITICAL: '严重风险',
+  LOW: 'Low',
+  MEDIUM: 'Medium',
+  HIGH: 'High',
+  CRITICAL: 'Critical',
 };
 
 export const riskLevelLabels: Record<AuditResult['riskLevel'], string> = {
-  NONE: '无风险',
-  LOW: '低风险',
-  MEDIUM: '中风险',
-  HIGH: '高风险',
-  CRITICAL: '严重风险',
+  NONE: 'No risk',
+  LOW: 'Low risk',
+  MEDIUM: 'Medium risk',
+  HIGH: 'High risk',
+  CRITICAL: 'Critical risk',
 };
 
 export const riskCategoryLabels: Record<RiskCategory, string> = {
-  DISCRIMINATION: '就业歧视',
-  FEE_DEPOSIT: '收费与押金',
-  PRIVACY: '个人信息与隐私',
-  FALSE_OR_MISLEADING: '虚假或误导信息',
-  INCOMPLETE_INFORMATION: '信息不完整',
-  LABOR_CONTRACT_RISK: '劳动合同风险',
-  PLATFORM_POLICY: '平台规则',
-  OTHER: '其他风险',
+  DISCRIMINATION: 'Discrimination',
+  FEE_DEPOSIT: 'Fees and deposits',
+  PRIVACY: 'Privacy',
+  FALSE_OR_MISLEADING: 'False or misleading',
+  INCOMPLETE_INFORMATION: 'Incomplete information',
+  LABOR_CONTRACT_RISK: 'Labor contract risk',
+  PLATFORM_POLICY: 'Platform policy',
+  OTHER: 'Other',
 };
 
 const fallbackRiskScores: Record<AuditResult['riskLevel'], number> = {

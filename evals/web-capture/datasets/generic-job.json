@@ -1,0 +1,1 @@
+{"fixtureId":"generic_job_001","adapterId":"generic-job-page","expectedPageType":"JOB_DETAIL","expectedFields":{"title":"合规专员","companyName":"示例公司"},"expectedMainTextIncludes":["负责招聘合规审核"],"expectedMainTextExcludes":["相关推荐职位"]}

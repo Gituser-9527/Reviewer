@@ -3,3 +3,4 @@ export * from './audit.js';
 export * from './domain.js';
 export * from './review.js';
 export * from './schema.js';
+export * from './web-capture.js';

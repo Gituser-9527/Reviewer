@@ -26,21 +26,35 @@ npm install
 
 ## 本地启动
 
-分别打开两个终端。
-
-启动 API，默认监听 `http://localhost:3001`：
+安装依赖后，一条命令启动 API 与 Web：
 
 ```bash
-npm run dev:api
+npm run dev
 ```
 
-启动 Web，默认监听 `http://localhost:3000`：
+启动日志会显示以下本地地址：
+
+- Web：`http://localhost:3000`
+- API：`http://localhost:3001`
+- Health：`http://localhost:3001/health`
+
+默认不配置 `DATABASE_URL` 时，API 使用进程内存存储，适合开发和测试。如果需要 PostgreSQL 持久化，请先复制 `.env.example` 为 `.env`，再启动基础设施：
 
 ```bash
-npm run dev:web
+npm run dev:infra
+npm run db:migrate
+npm run dev
 ```
 
-Web 会将 `/api/*` 代理到 `http://localhost:3001`。可通过 `API_BASE_URL` 修改代理目标，也可使用 `.env.example` 中的变量覆盖 API 的 `HOST` 和 `PORT`。不要提交包含密钥或敏感数据的 `.env` 文件。
+也可以按需单独运行：
+
+```bash
+npm run dev:api    # 仅 API
+npm run dev:web    # 仅 Web
+npm run doctor     # 检查 Node、npm、端口、环境变量、PostgreSQL 和 Docker Compose
+```
+
+Web 会将 `/api/*` 代理到 `http://localhost:3001`。可通过 `API_BASE_URL` 修改代理目标，也可使用 `.env.example` 中的变量覆盖 API 的 `HOST` 和 `PORT`。不要提交包含密钥或敏感数据的 `.env` 文件。当前没有独立 worker 或 Redis 进程；异步任务 MVP 在 API 进程内运行。
 
 如需启用 PostgreSQL 持久化，先设置 `DATABASE_URL` 并执行迁移：
 
@@ -75,6 +89,12 @@ npm run lint          # 运行 ESLint
 npm run format        # 使用 Prettier 格式化
 npm run format:check  # 检查格式
 npm run db:migrate    # 使用 DATABASE_URL 执行 PostgreSQL migration
+npm run build:extension # 构建浏览器扩展
+npm run cleanup:web-captures -- --dry-run # 检查网页采集正文清理
+npm run dev           # 同时启动 API 和 Web
+npm run dev:infra     # 启动本地 PostgreSQL Docker 服务
+npm run doctor        # 检查本地开发环境
+npm run check         # lint + test + build + i18n 检查
 ```
 
 ## 目录结构

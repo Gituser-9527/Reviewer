@@ -6,7 +6,7 @@ import type { AuthServices } from '../auth/service.js';
 import type { BetaTrialService } from '../beta-trial/service.js';
 import type { HumanReviewStore } from '../reviews/store.js';
 import type { RuntimeServices } from '../runtime/services.js';
-import { exportAuditResultCsv, exportAuditResultPdf } from './report-export.js';
+import { exportAuditResultCsv, exportAuditResultMarkdown, exportAuditResultPdf } from './report-export.js';
 import {
   apiKeyParamsSchema,
   createApiKeySchema,
@@ -171,17 +171,32 @@ export function registerProductRoutes(
         .send(notFound(request.id, 'AUDIT_RUN_NOT_FOUND', 'Audit run was not found.'));
     }
     dependencies.authServices?.authService.requireTenantAccess(request, result.context.tenantId);
+    const brandConfig = dependencies.productService.getTenant(result.context.tenantId)?.brandConfig ?? {};
+    const reportOptions = {
+      locale: query.locale,
+      brand: {
+        ...(typeof brandConfig.displayName === 'string' ? { displayName: brandConfig.displayName } : {}),
+        ...(typeof brandConfig.logoUrl === 'string' ? { logoUrl: brandConfig.logoUrl } : {}),
+        ...(typeof brandConfig.primaryColor === 'string' ? { primaryColor: brandConfig.primaryColor } : {}),
+      },
+    } as const;
     if (query.format === 'pdf') {
-      const pdf = exportAuditResultPdf(result as AuditResult);
+      const pdf = exportAuditResultPdf(result as AuditResult, reportOptions);
       return reply
         .type('application/pdf')
-        .header('content-disposition', `attachment; filename="${result.auditId}.pdf"`)
+        .header('content-disposition', `attachment; filename="${result.auditId}-${query.locale}.pdf"`)
         .send(pdf);
     }
-    const csv = exportAuditResultCsv(result as AuditResult);
+    if (query.format === 'markdown') {
+      return reply
+        .type('text/markdown; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${result.auditId}-${query.locale}.md"`)
+        .send(exportAuditResultMarkdown(result as AuditResult, reportOptions));
+    }
+    const csv = exportAuditResultCsv(result as AuditResult, reportOptions);
     return reply
       .type('text/csv; charset=utf-8')
-      .header('content-disposition', `attachment; filename="${result.auditId}.csv"`)
+      .header('content-disposition', `attachment; filename="${result.auditId}-${query.locale}.csv"`)
       .send(csv);
   });
 }

@@ -421,7 +421,18 @@ MVP 当前实现路径为 `/api/evals/*`，用于导入脱敏评估样本、运�
 - `GET /api/evals/runs/{id}`
 - `GET /api/evals/runs/{id}/failures`
 
-## 10. 运行时配置、灰度与监控 API
+## 10. 网页职位采集 API（第 52 轮设计契约）
+
+以下接口在第 52 轮定义契约，服务端持久化实现须在采集表迁移、鉴权与保留策略评审完成后启用。Base path 沿用当前 MVP 的 `/api`。
+
+- `POST /api/web-captures`：由已认证扩展提交用户确认后的字段预览；必须携带 `tenantId`、`sourceType`、`adapter.id`、`adapter.version` 和 `WebJobCapture`。服务端校验租户、幂等键并先脱敏后保存。
+- `GET /api/web-captures/{captureId}?tenantId=`：读取本租户采集快照及修正历史；默认不返回原始正文。
+- `POST /api/web-captures/{captureId}/corrections`：追加用户修正，不覆盖原提取值；字段来源记录为 `USER_CORRECTION`。
+- `POST /api/web-captures/{captureId}/audit`：将已确认快照转换为既有 `POST /api/audit/job` 输入，创建 AuditRun，并在结果上下文记录 `captureId`。
+
+扩展认证采用短期、受众绑定的会话令牌或 OAuth PKCE；不得使用扩展内 API Key，不得上传 Cookie、Authorization Header 或登录态。失败、缺失权限、字段不足或证据不足的情况必须转人工确认/既有 `REVIEW` 降级，不能默认通过。
+
+## 11. 运行时配置、灰度与监控 API
 
 MVP 当前实现路径为 `/api/runtime-configs`、`/api/rollouts`、`/api/metrics/audit` 和
 `/api/alerts`。运行时配置用于选择 `ruleVersion`、`lawKbVersion`、`modelVersion`。

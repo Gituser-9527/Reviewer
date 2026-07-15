@@ -10,10 +10,12 @@ import type { AuditRunStore } from '../audit/store.js';
 import type { AuthServices } from '../auth/service.js';
 import type { BetaTrialService } from '../beta-trial/service.js';
 import type { ProductService } from '../product/service.js';
+import { exportBatchAuditResultsCsv } from '../product/report-export.js';
 import type { HumanReviewStore } from '../reviews/store.js';
 import type { RuntimeServices } from '../runtime/services.js';
 import {
   batchAuditSchema,
+  batchExportQuerySchema,
   batchParamsSchema,
   tenantLimitParamsSchema,
   updateTenantLimitsSchema,
@@ -203,6 +205,39 @@ export function registerPerformanceRoutes(
     }
     dependencies.authServices?.authService.requireTenantAccess(request, batch.tenantId);
     return reply.send({ items: dependencies.services.queueService.listBatchItems(params.id) });
+  });
+
+  app.get('/api/audit/batch/:id/export', async (request, reply) => {
+    const params = batchParamsSchema.parse(request.params);
+    const query = batchExportQuerySchema.parse(request.query);
+    const batch = dependencies.services.queueService.getBatch(params.id);
+    if (batch === undefined) {
+      return reply.code(404).send(notFound(request.id, 'BATCH_NOT_FOUND', 'Batch audit job was not found.'));
+    }
+    dependencies.authServices?.authService.requireTenantAccess(request, batch.tenantId);
+    const results = (await Promise.all(batch.resultIds.map((id) => dependencies.auditRunStore.findById(id, batch.tenantId))))
+      .filter((item): item is AuditResult => item !== undefined);
+    const items = dependencies.services.queueService.listBatchItems(params.id);
+    const brandConfig = dependencies.productService?.getTenant(batch.tenantId)?.brandConfig ?? {};
+    const csv = exportBatchAuditResultsCsv(
+      batch,
+      results,
+      items.filter((item) => item.status === 'failed').map((item) => ({
+        jobPostingId: item.jobPostingId,
+        ...(item.error === undefined ? {} : { error: item.error }),
+      })),
+      {
+        locale: query.locale,
+        brand: {
+          ...(typeof brandConfig.displayName === 'string' ? { displayName: brandConfig.displayName } : {}),
+          ...(typeof brandConfig.logoUrl === 'string' ? { logoUrl: brandConfig.logoUrl } : {}),
+        },
+      },
+    );
+    return reply
+      .type('text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="${batch.id}-${query.locale}.csv"`)
+      .send(csv);
   });
 
   app.get('/api/usage/costs', async (request, reply) => {

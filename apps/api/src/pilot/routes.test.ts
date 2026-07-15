@@ -149,6 +149,15 @@ describe('pilot ROI API routes', () => {
     expect(dashboard.report.risksAndLimitations.length).toBeGreaterThan(0);
     expect(dashboard.report.markdown).toContain('风险和限制说明');
     expect(dashboard.feedback).toHaveLength(1);
+    expect(dashboard).toHaveProperty('conversion.recommendation', 'conditional');
+
+    const updateProjectResponse = await app.inject({
+      method: 'PATCH',
+      url: `/api/pilots/projects/${project.id}`,
+      payload: { stage: 'evaluation', blockers: ['需要补充样本量'] },
+    });
+    expect(updateProjectResponse.statusCode).toBe(200);
+    expect(updateProjectResponse.json()).toMatchObject({ stage: 'evaluation', blockers: ['需要补充样本量'] });
 
     const reportResponse = await app.inject({
       method: 'POST',

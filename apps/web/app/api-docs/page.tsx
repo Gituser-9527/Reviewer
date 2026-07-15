@@ -1,59 +1,27 @@
-const endpoints = [
-  ['POST', '/api/product/tenants', '注册租户并选择套餐'],
-  ['POST', '/api/product/tenants/{tenantId}/api-keys', '生成 API Key'],
-  ['POST', '/api/audit/job', '提交单条岗位审核'],
-  ['POST', '/api/audit/batch', '批量提交岗位审核'],
-  ['GET', '/api/product/tenants/{tenantId}/usage', '查看用量和剩余额度'],
-  ['GET', '/api/audit/runs/{auditId}/export?format=csv|pdf', '导出审核报告'],
-  ['POST', '/api/product/tenants/{tenantId}/webhooks', '配置审核完成 Webhook'],
-];
+'use client';
+
+import Link from 'next/link';
+import { useLanguage } from '../i18n/language-provider';
+import { PublicSiteHeader } from '../components/public-site-header';
 
 export default function ApiDocsPage() {
+  const { messages } = useLanguage();
+  const docs = messages.apiPortal;
+
   return (
-    <main className="docs-page">
-      <section className="docs-hero">
-        <p className="eyebrow">SaaS/API MVP</p>
-        <h1>招聘岗位合规审核 Agent API</h1>
-        <p>
-          面向企业和平台方试用的 API 能力，包括 API Key、套餐额度、批量审核、报告导出和
-          Webhook 回调。
-        </p>
-      </section>
-
-      <section className="docs-card">
-        <h2>认证方式</h2>
-        <pre>{`Authorization: Bearer jca_xxxx_secret\nx-api-key: jca_xxxx_secret`}</pre>
-      </section>
-
-      <section className="docs-card">
-        <h2>主要接口</h2>
-        <div className="endpoint-list">
-          {endpoints.map(([method, path, description]) => (
-            <article className="endpoint-item" key={`${method}-${path}`}>
-              <span>{method}</span>
-              <code>{path}</code>
-              <p>{description}</p>
-            </article>
-          ))}
+    <main className="public-site api-portal">
+      <PublicSiteHeader active="docs" />
+      <section className="api-portal__hero"><p className="public-eyebrow">{docs.eyebrow}</p><h1>{docs.title}</h1><p>{docs.description}</p><div><a className="public-cta" href="#quickstart">{docs.quickstart}</a><Link className="public-text-link" href="/landing#request-demo">{docs.requestDemo}</Link></div></section>
+      <section className="api-portal__layout" id="quickstart">
+        <aside><p>{docs.contents}</p><a href="#authentication">{docs.authentication}</a><a href="#endpoints">{docs.endpointsTitle}</a><a href="#sdk">{docs.sdkTitle}</a><a href="#sandbox">{docs.sandboxTitle}</a></aside>
+        <div className="api-portal__content">
+          <section id="authentication"><p className="public-eyebrow">01</p><h2>{docs.authentication}</h2><p>{docs.authenticationDescription}</p><pre>{docs.authenticationCode}</pre></section>
+          <section id="endpoints"><p className="public-eyebrow">02</p><h2>{docs.endpointsTitle}</h2><div className="api-endpoint-list">{docs.endpoints.map((endpoint) => <article key={endpoint.path}><span className={`api-method api-method--${endpoint.method.toLowerCase()}`}>{endpoint.method}</span><code>{endpoint.path}</code><p>{endpoint.description}</p></article>)}</div></section>
+          <section id="sdk"><p className="public-eyebrow">03</p><h2>{docs.sdkTitle}</h2><p>{docs.sdkDescription}</p><pre>{docs.sdkCode}</pre></section>
+          <section id="sandbox" className="api-sandbox"><p className="public-eyebrow">04</p><h2>{docs.sandboxTitle}</h2><p>{docs.sandboxDescription}</p><Link className="public-cta" href="/landing#request-demo">{docs.sandboxAction}</Link></section>
         </div>
       </section>
-
-      <section className="docs-card">
-        <h2>单条审核请求示例</h2>
-        <pre>{`{
-  "tenantId": "tenant_001",
-  "jobPostingId": "job_001",
-  "company": { "name": "某某科技有限公司" },
-  "job": {
-    "title": "行政专员",
-    "description": "限女性，入职需缴纳服装费"
-  },
-  "options": {
-    "jurisdiction": "CN_MAINLAND",
-    "enableRag": true
-  }
-}`}</pre>
-      </section>
+      <footer className="public-footer"><span>{docs.footer}</span><Link href="/landing">{docs.backHome}</Link></footer>
     </main>
   );
 }

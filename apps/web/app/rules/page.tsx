@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { ApiErrorResponse, RuleImprovementSuggestion } from '@job-compliance/shared';
+import { useAuth } from '../auth/auth-provider';
+import { PermissionGate } from '../components/permission-gate';
+import {
+  SensitiveActionDialog,
+  type SensitiveActionConfig,
+} from '../components/sensitive-action-dialog';
+import { useLanguage } from '../i18n/language-provider';
 
 type RuleStatus = 'draft' | 'published' | 'all';
 
@@ -65,10 +72,6 @@ interface RuleTestResult {
   }>;
 }
 
-interface AuthMe {
-  permissions: string[];
-}
-
 interface RuleForm {
   id: string;
   category: string;
@@ -128,7 +131,13 @@ async function parseApiError(response: Response): Promise<string> {
 }
 
 export default function RulesPage() {
+  const auth = useAuth();
+  const { messages } = useLanguage();
+  const permissionCopy = messages.permissions;
   const [status, setStatus] = useState<RuleStatus>('draft');
+  const [ruleQuery, setRuleQuery] = useState('');
+  const [ruleCategoryFilter, setRuleCategoryFilter] = useState('all');
+  const [rulePage, setRulePage] = useState(1);
   const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
   const [selectedRuleSetId, setSelectedRuleSetId] = useState('CN_MAINLAND');
   const [rules, setRules] = useState<ManagedRule[]>([]);
@@ -144,35 +153,65 @@ export default function RulesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [permissions, setPermissions] = useState<string[]>([]);
+  const [pendingSensitiveAction, setPendingSensitiveAction] = useState<{
+    config: SensitiveActionConfig;
+    run: () => Promise<void>;
+  } | null>(null);
 
-  const canEditDraft = permissions.includes('rule:edit_draft');
-  const canPublish = permissions.includes('rule:approve_publish');
+  const canEditDraft = auth.can('rule:edit_draft');
+  const canPublish = auth.can('rule:approve_publish');
+  const canRollback = auth.can('rule:rollback');
 
   const selectedRule = useMemo(
     () => rules.find((rule) => rule.id === selectedRuleId && rule.status === 'draft') ?? null,
     [rules, selectedRuleId],
+  );
+  const ruleCategories = useMemo(
+    () => [...new Set(rules.map((rule) => rule.category))].sort(),
+    [rules],
+  );
+  const filteredRules = useMemo(() => {
+    const normalizedQuery = ruleQuery.trim().toLowerCase();
+    return rules.filter((rule) => {
+      const matchesCategory = ruleCategoryFilter === 'all' || rule.category === ruleCategoryFilter;
+      const searchable = [
+        rule.id,
+        rule.category,
+        rule.severity,
+        rule.action,
+        rule.explanation,
+        patternsOf(rule),
+      ]
+        .join(' ')
+        .toLowerCase();
+      const matchesQuery = normalizedQuery.length === 0 || searchable.includes(normalizedQuery);
+      return matchesCategory && matchesQuery;
+    });
+  }, [ruleCategoryFilter, ruleQuery, rules]);
+  const rulePageSize = 6;
+  const totalRulePages = Math.max(1, Math.ceil(filteredRules.length / rulePageSize));
+  const currentRulePage = Math.min(rulePage, totalRulePages);
+  const visibleRules = filteredRules.slice(
+    (currentRulePage - 1) * rulePageSize,
+    currentRulePage * rulePageSize,
   );
 
   const loadRules = async (nextStatus = status) => {
     setIsLoading(true);
     setError(null);
     try {
-      const rulesResponse = await fetch(
+      const rulesResponse = await auth.fetchWithAuth(
         `/api/rules?jurisdiction=${selectedRuleSetId}&status=${nextStatus}`,
       );
-      const [meResponse, ruleSetsResponse, recordsResponse, suggestionsResponse] = await Promise.all([
-        fetch('/api/auth/me'),
-        fetch('/api/rulesets'),
-        fetch('/api/rule-publish-records'),
-        fetch('/api/rule-suggestions?status=open'),
+      const [ruleSetsResponse, recordsResponse, suggestionsResponse] = await Promise.all([
+        auth.fetchWithAuth('/api/rulesets'),
+        auth.fetchWithAuth('/api/rule-publish-records'),
+        auth.fetchWithAuth('/api/rule-suggestions?status=open'),
       ]);
-      if (!meResponse.ok) throw new Error(await parseApiError(meResponse));
       if (!rulesResponse.ok) throw new Error(await parseApiError(rulesResponse));
       if (!ruleSetsResponse.ok) throw new Error(await parseApiError(ruleSetsResponse));
       if (!recordsResponse.ok) throw new Error(await parseApiError(recordsResponse));
       if (!suggestionsResponse.ok) throw new Error(await parseApiError(suggestionsResponse));
-      setPermissions(((await meResponse.json()) as AuthMe).permissions);
       setRules(((await rulesResponse.json()) as { items: ManagedRule[] }).items);
       const nextRuleSets = ((await ruleSetsResponse.json()) as { items: RuleSet[] }).items;
       setRuleSets(nextRuleSets);
@@ -190,7 +229,7 @@ export default function RulesPage() {
 
   useEffect(() => {
     void loadRules(status);
-  }, [status, selectedRuleSetId]);
+  }, [auth.role, selectedRuleSetId, status]);
 
   const editRule = (rule: ManagedRule) => {
     setSelectedRuleId(rule.id);
@@ -233,7 +272,7 @@ export default function RulesPage() {
     };
 
     try {
-      const response = await fetch(
+      const response = await auth.fetchWithAuth(
         selectedRule === null
           ? `/api/rulesets/${selectedRuleSetId}/rules`
           : `/api/rules/${selectedRule.id}`,
@@ -257,7 +296,7 @@ export default function RulesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/rules/${rule.id}/toggle`, {
+      const response = await auth.fetchWithAuth(`/api/rules/${rule.id}/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -279,7 +318,7 @@ export default function RulesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/rulesets/${selectedRuleSetId}/publish`, {
+      const response = await auth.fetchWithAuth(`/api/rulesets/${selectedRuleSetId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -300,11 +339,31 @@ export default function RulesPage() {
     }
   };
 
+  const confirmPublish = () => {
+    setPendingSensitiveAction({
+      config: {
+        title: forcePublish ? permissionCopy.sensitiveAction.forcePublishTitle : permissionCopy.sensitiveAction.publishTitle,
+        description: forcePublish
+          ? permissionCopy.sensitiveAction.forcePublishDescription
+          : permissionCopy.sensitiveAction.publishDescription,
+        impact: [
+          permissionCopy.sensitiveAction.ruleSetImpact.replace('{id}', selectedRuleSetId),
+          permissionCopy.sensitiveAction.versionImpact.replace('{version}', publishVersion.trim() || 'auto patch'),
+          permissionCopy.sensitiveAction.evalImpact,
+        ],
+        confirmText: forcePublish ? 'FORCE PUBLISH' : 'PUBLISH',
+        confirmButtonLabel: forcePublish ? permissionCopy.sensitiveAction.forcePublish : permissionCopy.sensitiveAction.publish,
+        tone: forcePublish ? 'danger' : 'warning',
+      },
+      run: publishRules,
+    });
+  };
+
   const runRuleTest = async () => {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/rulesets/${selectedRuleSetId}/test`, {
+      const response = await auth.fetchWithAuth(`/api/rulesets/${selectedRuleSetId}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: testText }),
@@ -321,7 +380,7 @@ export default function RulesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/rulesets/${selectedRuleSetId}/rollback`, {
+      const response = await auth.fetchWithAuth(`/api/rulesets/${selectedRuleSetId}/rollback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actorId: 'mock-rule-admin' }),
@@ -335,9 +394,27 @@ export default function RulesPage() {
     }
   };
 
+  const confirmRollback = () => {
+    setPendingSensitiveAction({
+      config: {
+        title: permissionCopy.sensitiveAction.rollbackTitle,
+        description: permissionCopy.sensitiveAction.rollbackDescription,
+        impact: [
+          permissionCopy.sensitiveAction.ruleSetImpact.replace('{id}', selectedRuleSetId),
+          permissionCopy.sensitiveAction.rollbackImpact,
+          permissionCopy.sensitiveAction.auditImpact,
+        ],
+        confirmText: 'ROLLBACK',
+        confirmButtonLabel: permissionCopy.sensitiveAction.rollback,
+        tone: 'danger',
+      },
+      run: rollbackRules,
+    });
+  };
+
   const resolveSuggestion = async (suggestion: RuleImprovementSuggestion) => {
     try {
-      const response = await fetch(`/api/rule-suggestions/${suggestion.id}/resolve`, {
+      const response = await auth.fetchWithAuth(`/api/rule-suggestions/${suggestion.id}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -563,7 +640,36 @@ export default function RulesPage() {
             </div>
           </div>
 
-          {canPublish ? (
+          <div className="data-table__toolbar">
+            <input
+              aria-label="Search rules"
+              placeholder="搜索规则 ID、风险类别、解释或匹配词"
+              value={ruleQuery}
+              onChange={(event) => {
+                setRuleQuery(event.target.value);
+                setRulePage(1);
+              }}
+            />
+            <label>
+              <span>筛选</span>
+              <select
+                value={ruleCategoryFilter}
+                onChange={(event) => {
+                  setRuleCategoryFilter(event.target.value);
+                  setRulePage(1);
+                }}
+              >
+                <option value="all">全部类别</option>
+                {ruleCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {canPublish || canRollback ? (
           <div className="rule-publish-box">
             <label>
               <span>发布版本号</span>
@@ -581,12 +687,16 @@ export default function RulesPage() {
               />
               <span>强制发布</span>
             </label>
-            <button type="button" disabled={isPublishing} onClick={publishRules}>
+            <PermissionGate permissions={['rule:approve_publish']}>
+            <button type="button" disabled={isPublishing} onClick={confirmPublish}>
               {isPublishing ? '正在运行 eval…' : '发布 draft'}
             </button>
-            <button type="button" disabled={isPublishing} onClick={rollbackRules}>
+            </PermissionGate>
+            <PermissionGate permissions={['rule:rollback']}>
+            <button type="button" disabled={isPublishing} onClick={confirmRollback}>
               回滚上一版本
             </button>
+            </PermissionGate>
           </div>
           ) : (
             <p className="empty-state">当前角色不能发布或回滚规则，需要合规经理审批。</p>
@@ -628,7 +738,7 @@ export default function RulesPage() {
 
           {isLoading ? <p className="empty-state">规则加载中…</p> : null}
           <div className="rule-card-list">
-            {rules.map((rule) => (
+            {visibleRules.map((rule) => (
               <article className="rule-card" key={`${rule.status}-${rule.id}`}>
                 <div className="rule-card__head">
                   <div>
@@ -677,6 +787,30 @@ export default function RulesPage() {
                 ) : null}
               </article>
             ))}
+            {!isLoading && visibleRules.length === 0 ? (
+              <p className="empty-state">当前筛选条件下暂无规则。</p>
+            ) : null}
+          </div>
+          <div className="data-table__pagination">
+            <span>
+              {filteredRules.length} · {currentRulePage}/{totalRulePages}
+            </span>
+            <div>
+              <button
+                type="button"
+                disabled={currentRulePage <= 1}
+                onClick={() => setRulePage((value) => Math.max(1, value - 1))}
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                disabled={currentRulePage >= totalRulePages}
+                onClick={() => setRulePage((value) => Math.min(totalRulePages, value + 1))}
+              >
+                ›
+              </button>
+            </div>
           </div>
 
           <section className="result-section">
@@ -725,6 +859,16 @@ export default function RulesPage() {
           </section>
         </section>
       </section>
+      {pendingSensitiveAction ? (
+        <SensitiveActionDialog
+          busy={isPublishing}
+          config={pendingSensitiveAction.config}
+          onCancel={() => setPendingSensitiveAction(null)}
+          onConfirm={() => {
+            void pendingSensitiveAction.run().finally(() => setPendingSensitiveAction(null));
+          }}
+        />
+      ) : null}
     </main>
   );
 }

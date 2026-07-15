@@ -2,6 +2,13 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ApiErrorResponse } from '@job-compliance/shared';
+import { useAuth } from '../auth/auth-provider';
+import { PermissionGate } from '../components/permission-gate';
+import {
+  SensitiveActionDialog,
+  type SensitiveActionConfig,
+} from '../components/sensitive-action-dialog';
+import { useLanguage } from '../i18n/language-provider';
 
 type ReleaseTarget = 'ruleVersion' | 'lawKbVersion' | 'modelVersion' | 'promptVersion';
 
@@ -98,6 +105,8 @@ function toMetric(value: string): number | undefined {
 }
 
 export default function ReleasesPage() {
+  const auth = useAuth();
+  const { messages } = useLanguage();
   const [candidates, setCandidates] = useState<ReleaseCandidate[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [gateResults, setGateResults] = useState<GateResult[]>([]);
@@ -107,12 +116,16 @@ export default function ReleasesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [pendingSensitiveAction, setPendingSensitiveAction] = useState<{
+    config: SensitiveActionConfig;
+    run: () => Promise<void>;
+  } | null>(null);
 
   const selectedCandidate = candidates.find((candidate) => candidate.id === selectedId) ?? null;
   const latestGate = gateResults[0] ?? null;
 
   const loadCandidates = async () => {
-    const response = await fetch('/api/releases/candidates');
+    const response = await auth.fetchWithAuth('/api/releases/candidates');
     if (!response.ok) throw new Error(await parseApiError(response));
     const payload = (await response.json()) as { items: ReleaseCandidate[] };
     setCandidates(payload.items);
@@ -120,7 +133,7 @@ export default function ReleasesPage() {
   };
 
   const loadGateResults = async (candidateId: string) => {
-    const response = await fetch(`/api/releases/candidates/${candidateId}/gate-results`);
+    const response = await auth.fetchWithAuth(`/api/releases/candidates/${candidateId}/gate-results`);
     if (!response.ok) throw new Error(await parseApiError(response));
     const payload = (await response.json()) as GateResultResponse;
     setGateResults(payload.items);
@@ -146,7 +159,7 @@ export default function ReleasesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch('/api/releases/candidates', {
+      const response = await auth.fetchWithAuth('/api/releases/candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,7 +196,7 @@ export default function ReleasesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/releases/candidates/${selectedId}/run-gates`, {
+      const response = await auth.fetchWithAuth(`/api/releases/candidates/${selectedId}/run-gates`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error(await parseApiError(response));
@@ -204,7 +217,7 @@ export default function ReleasesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/releases/candidates/${selectedId}/approve`, {
+      const response = await auth.fetchWithAuth(`/api/releases/candidates/${selectedId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -229,7 +242,7 @@ export default function ReleasesPage() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`/api/releases/candidates/${selectedId}/publish`, {
+      const response = await auth.fetchWithAuth(`/api/releases/candidates/${selectedId}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ forcePublish }),
@@ -244,6 +257,26 @@ export default function ReleasesPage() {
     } finally {
       setIsBusy(false);
     }
+  };
+
+  const confirmPublish = () => {
+    if (selectedId === null || selectedCandidate === null) return;
+    const t = messages.permissions.sensitiveAction;
+    setPendingSensitiveAction({
+      config: {
+        title: forcePublish ? t.forcePublishTitle : t.releasePublishTitle,
+        description: forcePublish ? t.forcePublishDescription : t.releasePublishDescription,
+        impact: [
+          t.releaseCandidateImpact.replace('{id}', selectedId),
+          t.releaseTargetImpact.replace('{target}', selectedCandidate.target),
+          t.versionImpact.replace('{version}', selectedCandidate.targetVersion),
+        ],
+        confirmText: forcePublish ? 'FORCE PUBLISH' : 'PUBLISH',
+        confirmButtonLabel: forcePublish ? t.forcePublish : t.publish,
+        tone: forcePublish ? 'danger' : 'warning',
+      },
+      run: publish,
+    });
   };
 
   return (
@@ -363,23 +396,27 @@ export default function ReleasesPage() {
                 <h2>{selectedCandidate.name}</h2>
               </div>
               <div className="rule-publish-box">
-                <button type="button" disabled={isBusy} onClick={approve}>
-                  人工审批
-                </button>
+                <PermissionGate permissions={['rule:approve_publish']}>
+                  <button type="button" disabled={isBusy} onClick={() => void approve()}>
+                    人工审批
+                  </button>
+                </PermissionGate>
                 <button type="button" disabled={isBusy} onClick={runGates}>
                   运行质量门禁
                 </button>
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={forcePublish}
-                    onChange={(event) => setForcePublish(event.target.checked)}
-                  />
-                  <span>强制发布</span>
-                </label>
-                <button type="button" disabled={isBusy} onClick={publish}>
-                  发布 / 进入灰度
-                </button>
+                <PermissionGate permissions={['rule:approve_publish']}>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={forcePublish}
+                      onChange={(event) => setForcePublish(event.target.checked)}
+                    />
+                    <span>强制发布</span>
+                  </label>
+                  <button type="button" disabled={isBusy} onClick={confirmPublish}>
+                    发布 / 进入灰度
+                  </button>
+                </PermissionGate>
               </div>
 
               <div className="eval-metrics">
@@ -419,6 +456,16 @@ export default function ReleasesPage() {
           ) : null}
         </section>
       </section>
+      {pendingSensitiveAction ? (
+        <SensitiveActionDialog
+          busy={isBusy}
+          config={pendingSensitiveAction.config}
+          onCancel={() => setPendingSensitiveAction(null)}
+          onConfirm={() => {
+            void pendingSensitiveAction.run().finally(() => setPendingSensitiveAction(null));
+          }}
+        />
+      ) : null}
     </main>
   );
 }

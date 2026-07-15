@@ -13,6 +13,8 @@ export interface EvalStore extends EvalRepository {
     lawKbVersion?: string;
     modelVersion?: string;
   }): Promise<EvalRunReport>;
+  /** Deletes demo-owned evaluation datasets, cases and runs for controlled demo resets. */
+  deleteDemoData?(): Promise<number> | number;
 }
 
 export class InMemoryEvalStore implements EvalStore {
@@ -71,6 +73,24 @@ export class InMemoryEvalStore implements EvalStore {
   async findRun(id: string): Promise<EvalRunReport | undefined> {
     const run = this.runs.get(id);
     return run === undefined ? undefined : structuredClone(run);
+  }
+
+  deleteDemoData(): number {
+    let deleted = 0;
+    for (const id of [...this.datasets.keys()]) {
+      if (id.startsWith('demo_')) {
+        this.datasets.delete(id);
+        this.cases.delete(id);
+        deleted += 1;
+      }
+    }
+    for (const id of [...this.runs.keys()]) {
+      if (id.startsWith('demo_')) {
+        this.runs.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 
   async listFailures(evalRunId: string): Promise<EvalFailureRecord[]> {

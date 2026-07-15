@@ -3,6 +3,8 @@ import { z } from 'zod';
 const nonEmptyText = z.string().trim().min(1);
 const dateText = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u, 'expected YYYY-MM-DD');
 const pilotModes = ['shadow_mode', 'assist_mode', 'enforce_mode'] as const;
+const pilotStages = ['preparation', 'running', 'evaluation', 'decision', 'converted', 'closed'] as const;
+const pilotStatuses = ['active', 'completed', 'paused'] as const;
 
 export const createPilotProjectSchema = z
   .object({
@@ -16,6 +18,8 @@ export const createPilotProjectSchema = z
     hourlyLaborCost: z.number().min(0).max(100_000).default(80),
     description: z.string().trim().max(2_000).optional(),
     createdBy: nonEmptyText.max(200).optional(),
+    stage: z.enum(pilotStages).default('preparation'),
+    blockers: z.array(nonEmptyText.max(1_000)).max(30).default([]),
   })
   .strict()
   .refine((value) => value.endDate >= value.startDate, {
@@ -28,6 +32,17 @@ export const pilotListQuerySchema = z
     tenantId: nonEmptyText.max(200).optional(),
   })
   .strict();
+
+export const updatePilotProjectSchema = z
+  .object({
+    stage: z.enum(pilotStages).optional(),
+    status: z.enum(pilotStatuses).optional(),
+    blockers: z.array(nonEmptyText.max(1_000)).max(30).optional(),
+  })
+  .strict()
+  .refine((input) => input.stage !== undefined || input.status !== undefined || input.blockers !== undefined, {
+    message: 'At least one field must be supplied.',
+  });
 
 export const pilotParamsSchema = z
   .object({

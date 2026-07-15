@@ -85,7 +85,8 @@ export const batchParamsSchema = z
 export const exportAuditReportQuerySchema = z
   .object({
     tenantId: nonEmptyText.max(200).optional(),
-    format: z.enum(['csv', 'pdf']).default('csv'),
+    format: z.enum(['csv', 'markdown', 'pdf']).default('csv'),
+    locale: z.enum(['zh-CN', 'en-US']).default('zh-CN'),
   })
   .strict();
 

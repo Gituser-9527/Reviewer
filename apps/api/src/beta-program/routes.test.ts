@@ -11,6 +11,7 @@ describe('Beta program API routes', () => {
   it('creates a controlled Beta program and manages participants, mode, feedback, reports and checks', async () => {
     const app = buildApp();
     apps.push(app);
+    const today = new Date().toISOString().slice(0, 10);
 
     const createResponse = await app.inject({
       method: 'POST',
@@ -71,7 +72,7 @@ describe('Beta program API routes', () => {
       method: 'POST',
       url: `/api/beta-programs/${program.id}/daily-reports`,
       payload: {
-        reportDate: '2026-06-26',
+        reportDate: today,
         auditsReviewed: 12,
         manualReviewsCompleted: 8,
         summary: '首日试用整体可控，需复核 evidence 展示。',

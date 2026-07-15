@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "招聘合规审核助手",
+  "version": "0.1.0",
+  "description": "在用户主动确认后提取当前职位页面并辅助合规审核。",
+  "permissions": ["activeTab", "scripting", "sidePanel", "storage"],
+  "background": { "service_worker": "background/index.js", "type": "module" },
+  "action": { "default_title": "招聘合规审核" },
+  "side_panel": { "default_path": "sidepanel/index.html" }
+}

@@ -5,6 +5,13 @@ const nonEmptyText = z.string().trim().min(1);
 
 export { batchAuditSchema, batchParamsSchema };
 
+export const batchExportQuerySchema = z
+  .object({
+    format: z.enum(['csv']).default('csv'),
+    locale: z.enum(['zh-CN', 'en-US']).default('zh-CN'),
+  })
+  .strict();
+
 export const usageQuerySchema = z
   .object({
     tenantId: nonEmptyText.max(200),

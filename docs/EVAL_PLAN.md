@@ -15,6 +15,14 @@
 - 性能、稳定性、安全和成本
 - 后续 RAG 检索
 
+### 网页职位采集（第 52 轮）
+
+- 固定 HTML Fixture 的标题、主要正文和 JSON-LD `JobPosting` 提取。
+- 通用 DOM 降级：页面结构化数据缺失或变动时，保留低置信度预览和警告，不自动提交审核。
+- Adapter 注册/选择、Content Script 消息协议、用户未触发时不读取页面。
+- 敏感信息通过统一 security 模块脱敏；扩展日志不保留完整正文。
+- Manifest 最小权限断言：不得包含永久 `<all_urls>` host permission，且不配置默认全站 Content Script 注入。
+
 ## 3. 数据集设计
 
 ### 数据来源

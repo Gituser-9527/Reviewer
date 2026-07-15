@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useAuth } from '../auth/auth-provider';
+import { DataTable, type DataTableColumn } from '../components/data-table';
+import {
+  SensitiveActionDialog,
+  type SensitiveActionConfig,
+} from '../components/sensitive-action-dialog';
+import { PageContainer, SkeletonPanel } from '../components/ui';
+import { useLanguage } from '../i18n/language-provider';
 
 interface AuditMetricsSnapshot {
   audit_total: number;
@@ -45,10 +53,6 @@ interface AlertEventRecord {
   createdAt: string;
 }
 
-interface AuthMe {
-  permissions: string[];
-}
-
 interface MonitoringState {
   metrics: AuditMetricsSnapshot | null;
   configs: RuntimeConfigRecord[];
@@ -70,17 +74,26 @@ function asPercent(value: number): string {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    throw new Error(`请求失败（HTTP ${response.status}）`);
+    throw new Error(`Request failed (HTTP ${response.status})`);
   }
   return (await response.json()) as T;
 }
 
 export default function MonitoringPage() {
+  const auth = useAuth();
+  const { messages, formatDate, formatPercent } = useLanguage();
+  const tableCopy = messages.dashboard.tables;
+  const routeCopy = messages.routes['/monitoring'];
+  const pageCopy = messages.workspacePages.monitoring;
   const [state, setState] = useState<MonitoringState>(emptyState);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [permissions, setPermissions] = useState<string[]>([]);
+  const [pendingSensitiveAction, setPendingSensitiveAction] = useState<{
+    config: SensitiveActionConfig;
+    run: () => Promise<void>;
+  } | null>(null);
   const [form, setForm] = useState({
     target: 'ruleVersion',
     stableVersion: '1.0.0',
@@ -90,30 +103,34 @@ export default function MonitoringPage() {
   });
 
   const loadDashboard = async () => {
-    const [me, metrics, configs, rollouts, alerts] = await Promise.all([
-      fetchJson<AuthMe>('/api/auth/me'),
-      fetchJson<AuditMetricsSnapshot>('/api/metrics/audit'),
-      fetchJson<{ items: RuntimeConfigRecord[] }>('/api/runtime-configs'),
-      fetchJson<{ items: RolloutPlanRecord[] }>('/api/rollouts'),
-      fetchJson<{ items: AlertEventRecord[] }>('/api/alerts'),
-    ]);
-    setPermissions(me.permissions);
-    setState({
-      metrics,
-      configs: configs.items,
-      rollouts: rollouts.items,
-      alerts: alerts.items,
-    });
+    setIsLoading(true);
+    try {
+      const [me, metrics, configs, rollouts, alerts] = await Promise.all([
+        fetchJson('/api/auth/me'),
+        fetchJson<AuditMetricsSnapshot>('/api/metrics/audit'),
+        fetchJson<{ items: RuntimeConfigRecord[] }>('/api/runtime-configs'),
+        fetchJson<{ items: RolloutPlanRecord[] }>('/api/rollouts'),
+        fetchJson<{ items: AlertEventRecord[] }>('/api/alerts'),
+      ]);
+      void me;
+      setState({
+        metrics,
+        configs: configs.items,
+        rollouts: rollouts.items,
+        alerts: alerts.items,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadDashboard().catch((cause) => {
-      setError(cause instanceof Error ? cause.message : '加载监控数据失败。');
+      setError(cause instanceof Error ? cause.message : pageCopy.loadFailed);
     });
   }, []);
 
-  const createRollout = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const createRollout = async () => {
     setIsSubmitting(true);
     setError(null);
     setMessage(null);
@@ -133,13 +150,33 @@ export default function MonitoringPage() {
           createdBy: 'web_operator',
         }),
       });
-      setMessage('灰度计划已创建。');
+      setMessage(pageCopy.createSuccess);
       await loadDashboard();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '创建灰度计划失败。');
+      setError(cause instanceof Error ? cause.message : pageCopy.createFailed);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const confirmCreateRollout = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const t = messages.permissions.sensitiveAction;
+    setPendingSensitiveAction({
+      config: {
+        title: t.rolloutCreateTitle,
+        description: t.rolloutCreateDescription,
+        impact: [
+          t.rolloutImpact.replace('{target}', form.target),
+          t.versionImpact.replace('{version}', `${form.stableVersion.trim()} -> ${form.candidateVersion.trim()}`),
+          t.rolloutPercentImpact.replace('{percent}', form.rolloutPercent),
+        ],
+        confirmText: 'CREATE ROLLOUT',
+        confirmButtonLabel: t.createRollout,
+        tone: 'warning',
+      },
+      run: createRollout,
+    });
   };
 
   const rollback = async (id: string) => {
@@ -147,16 +184,123 @@ export default function MonitoringPage() {
     setMessage(null);
     try {
       await fetchJson(`/api/rollouts/${id}/rollback`, { method: 'POST' });
-      setMessage('已回滚到 stableVersion。');
+      setMessage(pageCopy.rollbackSuccess);
       await loadDashboard();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '回滚失败。');
+      setError(cause instanceof Error ? cause.message : pageCopy.rollbackFailed);
     }
+  };
+
+  const confirmRollback = (rollout: RolloutPlanRecord) => {
+    const t = messages.permissions.sensitiveAction;
+    setPendingSensitiveAction({
+      config: {
+        title: t.rolloutRollbackTitle,
+        description: t.rolloutRollbackDescription,
+        impact: [
+          t.rolloutImpact.replace('{target}', rollout.target),
+          t.versionImpact.replace('{version}', rollout.stableVersion),
+          t.auditImpact,
+        ],
+        confirmText: 'ROLLBACK',
+        confirmButtonLabel: t.rollback,
+        tone: 'danger',
+      },
+      run: () => rollback(rollout.id),
+    });
   };
 
   const metrics = state.metrics;
   const versionEntries = Object.entries(metrics?.version_distribution ?? {});
-  const canManageGlobal = permissions.includes('global:manage');
+  const canManageGlobal = auth.can('global:manage');
+  const rolloutColumns = useMemo<Array<DataTableColumn<RolloutPlanRecord>>>(
+    () => [
+      {
+        key: 'target',
+        label: 'Target',
+        render: (row) => <strong>{row.target}</strong>,
+        searchValue: (row) => `${row.target} ${row.stableVersion} ${row.candidateVersion}`,
+      },
+      {
+        key: 'version',
+        label: 'Version',
+        render: (row) => `${row.stableVersion} -> ${row.candidateVersion}`,
+      },
+      {
+        key: 'percent',
+        label: 'Rollout',
+        render: (row) => `${row.rolloutPercent}%`,
+      },
+      {
+        key: 'status',
+        label: tableCopy.status,
+        render: (row) => <span className={`rule-status rule-status--${row.status}`}>{row.status}</span>,
+        filterValue: (row) => row.status,
+      },
+      {
+        key: 'updatedAt',
+        label: tableCopy.createdAt,
+        render: (row) => formatDate(row.updatedAt),
+      },
+      {
+        key: 'actions',
+        label: '',
+        render: (row) =>
+          canManageGlobal ? (
+            <button
+              className="ghost-button"
+              disabled={row.status === 'rolled_back'}
+              type="button"
+              onClick={() => confirmRollback(row)}
+            >
+              {pageCopy.rollbackStable}
+            </button>
+          ) : null,
+      },
+    ],
+    [canManageGlobal, formatDate, tableCopy.createdAt, tableCopy.status],
+  );
+  const alertColumns = useMemo<Array<DataTableColumn<AlertEventRecord>>>(
+    () => [
+      {
+        key: 'message',
+        label: tableCopy.alert,
+        render: (row) => <strong>{row.message}</strong>,
+        searchValue: (row) => `${row.message} ${row.metricKey}`,
+      },
+      {
+        key: 'severity',
+        label: tableCopy.severity,
+        render: (row) => <span className={`severity severity--${row.severity}`}>{row.severity}</span>,
+        filterValue: (row) => row.severity,
+      },
+      {
+        key: 'status',
+        label: tableCopy.status,
+        render: (row) => row.status,
+        filterValue: (row) => row.status,
+      },
+      {
+        key: 'metric',
+        label: 'Metric',
+        render: (row) => `${row.metricKey}: ${formatPercent(row.metricValue)} / ${formatPercent(row.threshold)}`,
+      },
+      {
+        key: 'createdAt',
+        label: tableCopy.createdAt,
+        render: (row) => formatDate(row.createdAt),
+      },
+    ],
+    [formatDate, formatPercent, tableCopy.alert, tableCopy.createdAt, tableCopy.severity, tableCopy.status],
+  );
+
+  if (isLoading) {
+    return (
+      <PageContainer title={routeCopy.title} description={routeCopy.subtitle}>
+        <SkeletonPanel blocks={6} />
+      </PageContainer>
+    );
+  }
 
   return (
     <main>
@@ -164,30 +308,30 @@ export default function MonitoringPage() {
         <div>
           <span className="brand-mark">JC</span>
           <div>
-            <strong>岗位合规审核台</strong>
-            <span>Monitoring & Rollout</span>
+            <strong>{pageCopy.brandTitle}</strong>
+            <span>{pageCopy.brandSubtitle}</span>
           </div>
         </div>
         <nav className="top-nav">
           <a className="text-link" href="/">
-            审核台
+            {pageCopy.navAudit}
           </a>
           <a className="text-link" href="/rules">
-            规则管理
+            {pageCopy.navRules}
           </a>
           <a className="text-link" href="/evals">
-            评估台
+            {pageCopy.navEvals}
           </a>
           <a className="text-link" href="/releases">
-            发布门禁
+            {pageCopy.navReleases}
           </a>
         </nav>
       </header>
 
       <section className="intro-block intro-block--compact">
-        <p className="section-label">Operations</p>
-        <h1>监控灰度与快速回滚。</h1>
-        <p>查看审核指标、规则版本分布、灰度计划和告警事件，支持运营侧一键回滚。</p>
+        <p className="section-label">{pageCopy.heroEyebrow}</p>
+        <h1>{pageCopy.heroTitle}</h1>
+        <p>{pageCopy.heroDescription}</p>
       </section>
 
       {error ? <div className="error-message">{error}</div> : null}
@@ -198,7 +342,7 @@ export default function MonitoringPage() {
         <article className="monitoring-panel">
           <div className="section-heading section-heading--stack">
             <p className="section-label">Audit metrics</p>
-            <h2>监控总览</h2>
+            <h2>{pageCopy.metricsTitle}</h2>
           </div>
           <dl className="ops-metrics">
             <div>
@@ -229,25 +373,25 @@ export default function MonitoringPage() {
         </article>
         ) : (
           <article className="monitoring-panel">
-            <p className="empty-state">当前角色没有创建灰度计划权限。</p>
+            <p className="empty-state">{pageCopy.noManagePermission}</p>
           </article>
         )}
 
         <article className="monitoring-panel">
           <div className="section-heading section-heading--stack">
             <p className="section-label">Versions</p>
-            <h2>规则版本分布</h2>
+            <h2>{pageCopy.versionsTitle}</h2>
           </div>
           <div className="ops-list">
             {versionEntries.length > 0 ? (
               versionEntries.map(([version, count]) => (
                 <article key={version}>
                   <strong>{version}</strong>
-                  <span>{count} 次审核</span>
+                  <span>{pageCopy.auditCount.replace('{count}', String(count))}</span>
                 </article>
               ))
             ) : (
-              <p className="empty-state">暂无审核版本分布。</p>
+              <p className="empty-state">{pageCopy.noVersionDistribution}</p>
             )}
           </div>
           <div className="ops-list ops-list--compact">
@@ -264,19 +408,20 @@ export default function MonitoringPage() {
       <section className="monitoring-grid monitoring-grid--wide">
         <article className="monitoring-panel">
           <div className="section-heading section-heading--stack">
-            <p className="section-label">New rollout</p>
-            <h2>创建灰度计划</h2>
+            <p className="section-label">{pageCopy.newRolloutEyebrow}</p>
+            <h2>{pageCopy.newRolloutTitle}</h2>
           </div>
-          <form className="rule-form" onSubmit={createRollout}>
+          {canManageGlobal ? (
+          <form className="rule-form" onSubmit={confirmCreateRollout}>
             <label>
-              <span>目标</span>
+              <span>{pageCopy.target}</span>
               <select
                 value={form.target}
                 onChange={(event) => setForm((current) => ({ ...current, target: event.target.value }))}
               >
-                <option value="ruleVersion">规则版本</option>
-                <option value="lawKbVersion">知识库版本</option>
-                <option value="modelVersion">模型版本</option>
+                <option value="ruleVersion">{pageCopy.ruleVersion}</option>
+                <option value="lawKbVersion">{pageCopy.lawKbVersion}</option>
+                <option value="modelVersion">{pageCopy.modelVersion}</option>
               </select>
             </label>
             <div className="form-grid form-grid--compact">
@@ -324,74 +469,66 @@ export default function MonitoringPage() {
               />
             </label>
             <button className="submit-button submit-button--inline" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? '创建中…' : '创建灰度计划'}
+              {isSubmitting ? pageCopy.creating : pageCopy.createRollout}
             </button>
           </form>
+          ) : (
+            <p className="empty-state">{pageCopy.noManagePermission}</p>
+          )}
         </article>
 
         <article className="monitoring-panel">
           <div className="section-heading section-heading--stack">
             <p className="section-label">Rollouts</p>
-            <h2>灰度计划列表</h2>
+            <h2>{pageCopy.rolloutsTitle}</h2>
           </div>
-          <div className="ops-list">
-            {state.rollouts.length > 0 ? (
-              state.rollouts.map((rollout) => (
-                <article key={rollout.id}>
-                  <div>
-                    <strong>{rollout.target}</strong>
-                    <span className={`rule-status rule-status--${rollout.status}`}>
-                      {rollout.status}
-                    </span>
-                  </div>
-                  <p>
-                    {rollout.stableVersion} → {rollout.candidateVersion} ·{' '}
-                    {rollout.rolloutPercent}% · allowList {rollout.tenantAllowList.length}
-                  </p>
-                  {canManageGlobal ? (
-                  <button
-                    className="ghost-button"
-                    disabled={rollout.status === 'rolled_back'}
-                    type="button"
-                    onClick={() => void rollback(rollout.id)}
-                  >
-                    回滚到 stableVersion
-                  </button>
-                  ) : null}
-                </article>
-              ))
-            ) : (
-              <p className="empty-state">暂无灰度计划。</p>
-            )}
-          </div>
+          <DataTable
+            rows={state.rollouts}
+            columns={rolloutColumns}
+            searchPlaceholder={tableCopy.search}
+            filterLabel={tableCopy.filter}
+            filters={[
+              { label: tableCopy.all, value: 'all' },
+              { label: 'active', value: 'active' },
+              { label: 'paused', value: 'paused' },
+              { label: 'completed', value: 'completed' },
+              { label: 'rolled_back', value: 'rolled_back' },
+            ]}
+            emptyTitle={pageCopy.noRollouts}
+          />
         </article>
 
         <article className="monitoring-panel">
           <div className="section-heading section-heading--stack">
             <p className="section-label">Alerts</p>
-            <h2>告警列表</h2>
+            <h2>{pageCopy.alertsTitle}</h2>
           </div>
-          <div className="ops-list">
-            {state.alerts.length > 0 ? (
-              state.alerts.map((alert) => (
-                <article key={alert.id}>
-                  <div>
-                    <strong>{alert.message}</strong>
-                    <span className={`severity severity--${alert.severity}`}>{alert.severity}</span>
-                  </div>
-                  <p>
-                    {alert.metricKey}: {asPercent(alert.metricValue)} / 阈值{' '}
-                    {asPercent(alert.threshold)}
-                  </p>
-                  <small>{new Date(alert.createdAt).toLocaleString('zh-CN')}</small>
-                </article>
-              ))
-            ) : (
-              <p className="empty-state empty-state--pass">暂无告警。</p>
-            )}
-          </div>
+          <DataTable
+            rows={state.alerts}
+            columns={alertColumns}
+            searchPlaceholder={tableCopy.search}
+            filterLabel={tableCopy.filter}
+            filters={[
+              { label: tableCopy.all, value: 'all' },
+              { label: tableCopy.critical, value: 'critical' },
+              { label: tableCopy.warning, value: 'warning' },
+              { label: tableCopy.open, value: 'open' },
+              { label: tableCopy.resolved, value: 'resolved' },
+            ]}
+            emptyTitle={pageCopy.noAlerts}
+          />
         </article>
       </section>
+      {pendingSensitiveAction ? (
+        <SensitiveActionDialog
+          busy={isSubmitting}
+          config={pendingSensitiveAction.config}
+          onCancel={() => setPendingSensitiveAction(null)}
+          onConfirm={() => {
+            void pendingSensitiveAction.run().finally(() => setPendingSensitiveAction(null));
+          }}
+        />
+      ) : null}
     </main>
   );
 }

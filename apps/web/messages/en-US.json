@@ -1,0 +1,811 @@
+{
+  "app": {
+    "name": "Job Compliance Audit Agent",
+    "console": "Job Compliance Audit Console",
+    "productName": "Compliance Agent",
+    "productSubtitle": "Hiring Risk Console",
+    "principles": "Rules first · Traceable evidence · Human fallback",
+    "betaReady": "Beta Ready",
+    "uatGate": "UAT Gate",
+    "killSwitch": "Kill Switch"
+  },
+  "nav": {
+    "groups": {
+      "workbench": "Workbench",
+      "quality": "Quality",
+      "ops": "Operations"
+    },
+    "overview": { "label": "Dashboard", "description": "Global status and metrics" },
+    "jobAudit": { "label": "Audit", "description": "Job audit workspace" },
+    "reviewQueue": { "label": "Review", "description": "Human review workspace" },
+    "rules": { "label": "Rules", "description": "Rule operations workspace" },
+    "evaluations": { "label": "Evaluation", "description": "Evals and quality gates" },
+    "redTeam": { "label": "Red Team", "description": "Adversarial tests" },
+    "releases": { "label": "Releases", "description": "Release gates" },
+    "monitoring": { "label": "Monitoring", "description": "Rollout, metrics and alerts" },
+    "appeals": { "label": "Appeals", "description": "Appeal review" },
+    "qa": { "label": "QA", "description": "Quality inspection" },
+    "settings": { "label": "Settings", "description": "Tenants, roles and config" }
+  },
+  "routes": {
+    "/": { "title": "Job Audit", "subtitle": "Job compliance audit workbench" },
+    "/overview": { "title": "Overview", "subtitle": "Audit operations overview" },
+    "/reviews": { "title": "Review Queue", "subtitle": "Human review and feedback loop" },
+    "/rules": { "title": "Rules", "subtitle": "Rule operations and versioning" },
+    "/evals": { "title": "Evaluations", "subtitle": "Datasets, real cases and failure analysis" },
+    "/red-team": { "title": "Red Team", "subtitle": "Adversarial samples and bypass risks" },
+    "/releases": { "title": "Releases", "subtitle": "Release quality gate" },
+    "/monitoring": { "title": "Monitoring", "subtitle": "Rollout, metrics and alerts" },
+    "/appeals": { "title": "Appeals", "subtitle": "Employer appeals and human re-review" },
+    "/qa": { "title": "QA", "subtitle": "Audit quality inspection loop" },
+    "/settings": { "title": "Settings", "subtitle": "Tenant, permission and runtime settings" },
+    "/uat": { "title": "UAT Gate", "subtitle": "Final acceptance before Beta" },
+    "/incidents": { "title": "Incident Response", "subtitle": "Emergency switches and postmortems" },
+    "/beta-launch": { "title": "Beta Launch", "subtitle": "Controlled trial delivery package" },
+    "/beta-trial": { "title": "Beta Trial", "subtitle": "Closed trial modes" },
+    "/pilot": { "title": "Pilot ROI", "subtitle": "Customer pilot and ROI dashboard" },
+    "/help-center": { "title": "Help Center", "subtitle": "Training and operating guide" },
+    "/api-docs": { "title": "API Docs", "subtitle": "External integration guide" },
+    "/landing": { "title": "Product website", "subtitle": "Job Compliance Audit Agent" },
+    "fallback": { "title": "Workspace", "subtitle": "Job compliance audit console" }
+  },
+  "language": {
+    "label": "Language",
+    "zh-CN": "中文",
+    "en-US": "English"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "switchTheme": "Switch theme",
+    "currentTheme": "Current theme: {theme}",
+    "selected": "Selected"
+  },
+  "demoMode": {
+    "title": "Demo Mode",
+    "description": "Demo mode uses safe synthetic data and contains no real personal or employer data.",
+    "notLoaded": "Demo data not loaded",
+    "auditCases": "Cases",
+    "auditRuns": "Audits",
+    "reviewTickets": "Reviews",
+    "seededAt": "Seeded at",
+    "seed": "Generate demo data",
+    "resetAction": "Reset demo data",
+    "processing": "Processing…",
+    "seeded": "Demo data generated.",
+    "reset": "Demo data reset.",
+    "actionFailed": "Demo action failed. Check whether the API service is available."
+  },
+  "onboarding": {
+    "eyebrow": "First-run guide",
+    "title": "Complete your first compliance workflow in three steps",
+    "description": "This guide focuses on the workspaces most relevant to your current role. You can skip it and resume from the lower-right entry at any time.",
+    "continue": "Continue guide",
+    "continueLabel": "Open onboarding guide",
+    "skip": "Continue later",
+    "complete": "I understand, start using",
+    "saving": "Saving…",
+    "loadFailed": "Could not load onboarding status. Please try again later.",
+    "saveFailed": "Could not save onboarding status. Please try again later.",
+    "help": "Help center",
+    "helpTooltip": "View review SOPs, risk standards and common misjudgment cases",
+    "helpCenter": "Open help center and training materials",
+    "flowLabel": "Audit flow",
+    "flow": { "input": "Job input", "audit": "Rule audit", "evidence": "Evidence check", "action": "Human action" },
+    "tasks": {
+      "REVIEWER": [
+        { "title": "Complete one job audit", "description": "Enter a posting, then inspect matched source text, explanations and evidence.", "action": "Go to audit", "href": "/" },
+        { "title": "Handle manual reviews", "description": "Submit consistent decisions and feedback without contaminating evaluation data.", "action": "Open review queue", "href": "/reviews" },
+        { "title": "Understand appeal review", "description": "The Appeal Agent organizes both sides; a human still makes the final decision.", "action": "View appeals", "href": "/appeals" }
+      ],
+      "RULE_OPERATOR": [
+        { "title": "Review audit results", "description": "See how rule hits appear in an audit result before editing a rule set.", "action": "Go to audit", "href": "/" },
+        { "title": "Test draft rules", "description": "Validate matched text, categories and suggested decisions in the rules workspace.", "action": "Manage rules", "href": "/rules" },
+        { "title": "Review evaluation baselines", "description": "Run evaluations before a release and inspect failed and red-team cases.", "action": "Open evaluations", "href": "/evals" }
+      ],
+      "COMPLIANCE_MANAGER": [
+        { "title": "Explore the audit workbench", "description": "Understand business input, traceable findings and the human fallback path.", "action": "Go to audit", "href": "/" },
+        { "title": "Approve release candidates", "description": "Approve rule, knowledge-base or model changes only after quality gates pass.", "action": "Open releases", "href": "/releases" },
+        { "title": "Monitor and roll back", "description": "Review anomaly metrics and rollout state, then roll back when needed.", "action": "View monitoring", "href": "/monitoring" }
+      ],
+      "TENANT_ADMIN": [
+        { "title": "Try a job audit", "description": "Start with a sample posting to understand the audit input and report structure.", "action": "Go to audit", "href": "/" },
+        { "title": "Check manual review progress", "description": "Understand pending postings and the review team's feedback status.", "action": "Open review queue", "href": "/reviews" },
+        { "title": "View usage and evaluations", "description": "Use the evaluation center to inspect available quality baselines and failures.", "action": "Open evaluations", "href": "/evals" }
+      ],
+      "SUPER_ADMIN": [
+        { "title": "Try a job audit", "description": "Start with a safe sample posting and inspect the result and evidence trail.", "action": "Go to audit", "href": "/" },
+        { "title": "Check runtime configuration", "description": "Keep tenant, permission and runtime-version configuration traceable.", "action": "Open settings", "href": "/settings" },
+        { "title": "Check monitoring and releases", "description": "Use quality gates, rollouts and alerts to keep launches controlled.", "action": "View monitoring", "href": "/monitoring" }
+      ],
+      "VIEWER": [
+        { "title": "View job audits", "description": "Understand audit input and explainable risk reports.", "action": "Go to audit", "href": "/" },
+        { "title": "View review status", "description": "See human review progress without edit operations.", "action": "Open review queue", "href": "/reviews" },
+        { "title": "View monitoring overview", "description": "Track audit trends and alerts without sensitive operations.", "action": "View monitoring", "href": "/monitoring" }
+      ]
+    }
+  },
+  "reportExport": {
+    "label": "Export report",
+    "pdf": "PDF",
+    "markdown": "Markdown",
+    "csv": "CSV",
+    "exporting": "Exporting…",
+    "downloaded": "{format} report download started.",
+    "failed": "Report export failed. Confirm that the API service is available."
+  },
+  "landing": {
+    "brand": "Hiring Compliance",
+    "navigationLabel": "Public site navigation",
+    "login": "Open console",
+    "requestDemo": "Request access",
+    "nav": { "features": "Features", "security": "Security", "apiDocs": "API docs" },
+    "hero": { "eyebrow": "EXPLAINABLE HIRING COMPLIANCE INFRASTRUCTURE", "title": "Give every job posting a clear risk basis.", "description": "Connect deterministic rules, traceable evidence and human review in one controlled workflow, so platforms and employers can identify hiring compliance risk earlier.", "primaryAction": "Request a controlled trial", "secondaryAction": "Read the API docs", "note": "An audit assistant, not a legal adjudicator. Insufficient evidence is routed to human review.", "visualLabel": "Compliance audit flow illustration", "consoleLabel": "AUDIT SIGNALS / LIVE", "decisionLabel": "Suggested decision", "decisionNote": "Evidence required", "signalRule": "Deterministic rule hit", "signalEvidence": "Law and policy evidence linked", "signalHuman": "Human-review fallback" },
+    "trustLabel": "Platform characteristics", "trust": ["Rules first", "Traceable evidence", "Tenant isolation", "Redacted by default"],
+    "features": { "eyebrow": "PRODUCT CAPABILITIES", "title": "Turn audit decisions into an executable, traceable workflow.", "items": [{ "title": "Rule-driven audit", "description": "YAML-configured deterministic rules identify discrimination, fees, privacy and misleading-risk signals first." }, { "title": "Evidence and explanation", "description": "Each finding can link to a rule, law or platform reference so reviewers can verify it quickly." }, { "title": "Human-in-the-loop", "description": "High-risk and insufficient-evidence cases route to human review; feedback improves evals and rule operations." }, { "title": "Controlled operations", "description": "Versions, evaluations, rollout, alerts and rollback keep rule updates verifiable and auditable." }] },
+    "howItWorks": { "eyebrow": "HOW IT WORKS", "title": "From job text to an explainable audit report.", "steps": [{ "title": "Send a job posting", "description": "Submit text and structured fields from the console or REST API." }, { "title": "Verify rules and evidence", "description": "The rule engine identifies signals first; knowledge retrieval adds traceable references." }, { "title": "Aggregate risk", "description": "Combine risk level, suggested action and rewrite guidance, then validate output quality." }, { "title": "Review and learn", "description": "Route cases to humans when needed; feedback informs evaluation sets and rules." }] },
+    "useCases": { "eyebrow": "USE CASES", "title": "One consistent compliance language for every hiring workflow.", "items": [{ "title": "Pre-publication platform review", "description": "Identify explicit risk before posting and route ambiguous cases to reviewers.", "outcome": "Reduce manual triage" }, { "title": "Employer content self-check", "description": "Help recruiting teams understand risk sources and apply explainable changes before resubmission.", "outcome": "Reduce revision cycles" }, { "title": "Compliance operations", "description": "Govern rule and knowledge changes with evals, red-team testing, rollout and release gates.", "outcome": "Make changes verifiable" }] },
+    "security": { "eyebrow": "SECURITY & COMPLIANCE", "title": "An audit operating model designed for sensitive hiring data.", "description": "Sensitive information is redacted by default before audit logging and LLM input, while versions, evidence and operations remain traceable.", "items": ["Default redaction and sensitive-value hashing", "Traceable rule, knowledge-base and model versions", "Tenant context and role-based access", "Rule or evidence references for high-risk findings"] },
+    "api": { "eyebrow": "DEVELOPER INTEGRATION", "title": "Connect existing hiring flows with stable REST APIs.", "description": "Supports single and batch audits, webhook callbacks, report exports and Sandbox trials.", "action": "Browse full API docs", "codeLabel": "Audit API example", "code": "const result = await fetch('/v1/audit/job', {\n  method: 'POST',\n  headers: { 'x-api-key': process.env.JCA_API_KEY },\n  body: JSON.stringify({ job: posting })\n});" },
+    "pricing": { "eyebrow": "PRICING", "title": "Start with a controlled trial and scale by audit volume.", "description": "Free Trial, Starter, Pro and Enterprise are configured around pilot scope and integration needs.", "note": "Pricing and enterprise SLAs are provided in a formal quote." },
+    "request": { "eyebrow": "REQUEST ACCESS", "title": "Ready to connect compliance review to your workflow?", "description": "Leave a work contact and we will arrange a controlled demo or Sandbox setup for your use case.", "privacyNote": "We retain only a redacted contact value and hash for de-duplication and follow-up; the full email is not stored here.", "companyName": "Company name", "contactName": "Contact name", "email": "Work email", "companySize": "Team size (optional)", "useCase": "Use case (optional)", "submit": "Submit trial request", "submitting": "Submitting…", "success": "We received your request and will be in touch soon.", "error": "Submission failed. Check that the API is available and try again." },
+    "footer": { "disclaimer": "This product assists with hiring-compliance risk and is not legal advice or legal adjudication.", "apiDocs": "API docs", "login": "Open console" }
+  },
+  "apiPortal": { "eyebrow": "DEVELOPER PORTAL", "title": "Hiring Compliance Audit API", "description": "Use stable APIs for job audits, batch processing, usage checks and audit-report exports.", "quickstart": "Quick start", "requestDemo": "Request Sandbox", "contents": "Contents", "authentication": "Authentication", "authenticationDescription": "Include a tenant-issued API Key in request headers. Use and store keys only in server-side environments.", "authenticationCode": "Authorization: Bearer jca_xxxx_secret\nx-api-key: jca_xxxx_secret", "endpointsTitle": "Core endpoints", "endpoints": [{ "method": "POST", "path": "/v1/audit/job", "description": "Submit a single job audit" }, { "method": "POST", "path": "/v1/audit/batch", "description": "Submit an asynchronous batch audit" }, { "method": "GET", "path": "/v1/audit/runs/{id}", "description": "Fetch a traceable audit result" }, { "method": "GET", "path": "/v1/usage", "description": "Read plan limits and usage" }, { "method": "POST", "path": "/v1/webhooks/test", "description": "Validate webhook signatures and delivery" }], "sdkTitle": "TypeScript SDK example", "sdkDescription": "Use native fetch today; a packaged SDK will be available with the production product release.", "sdkCode": "const response = await fetch(`${baseUrl}/v1/audit/job`, {\n  method: 'POST',\n  headers: {\n    'content-type': 'application/json',\n    'x-api-key': apiKey\n  },\n  body: JSON.stringify({ job: posting })\n});\n\nconst audit = await response.json();", "sandboxTitle": "Sandbox", "sandboxDescription": "Sandbox uses simulated data and isolated quota, suited to field mapping, webhook and audit-result consumer validation.", "sandboxAction": "Request Sandbox", "footer": "API enum values remain stable; client applications localize their display labels.", "backHome": "Back to product home" },
+  "permissions": {
+    "currentRole": "Current role",
+    "noAccessTitle": "This role cannot access this page",
+    "noAccessDescription": "Switch to a role with the required permission, or return to the Dashboard to see available workspaces. Backend APIs still enforce authorization.",
+    "backToDashboard": "Back to Dashboard",
+    "requiredPermissions": "Required permissions",
+    "currentPermissions": "Current role permissions",
+    "roles": {
+      "SUPER_ADMIN": "Super admin",
+      "TENANT_ADMIN": "Tenant admin",
+      "COMPLIANCE_MANAGER": "Compliance manager",
+      "REVIEWER": "Reviewer",
+      "RULE_OPERATOR": "Rule operator",
+      "VIEWER": "Viewer"
+    },
+    "sensitiveAction": {
+      "eyebrow": "Sensitive Action",
+      "impactScope": "Impact scope",
+      "confirmInput": "Type {text} to confirm",
+      "processing": "Processing…",
+      "cancel": "Cancel",
+      "publishTitle": "Confirm rule version publish",
+      "publishDescription": "After publishing, the new rule version may affect future job audit decisions.",
+      "forcePublishTitle": "Confirm force publish",
+      "forcePublishDescription": "Force publish bypasses normal quality gate restrictions and should only be used when risk is accepted by a compliance manager.",
+      "rollbackTitle": "Confirm rule rollback",
+      "rollbackDescription": "Rollback switches online rules back to the previous stable version to handle false positives, missed risks or abnormal metrics.",
+      "ruleSetImpact": "Rule set: {id}",
+      "versionImpact": "Target version: {version}",
+      "evalImpact": "Eval / red team checks should already be completed",
+      "rollbackImpact": "Will restore the previous published version",
+      "auditImpact": "Future auditRun records will use the rolled-back ruleVersion",
+      "releasePublishTitle": "Confirm release candidate publish",
+      "releasePublishDescription": "Publishing creates rollout plans and binds the selected rule, law KB, model or prompt version.",
+      "releaseCandidateImpact": "Release candidate: {id}",
+      "releaseTargetImpact": "Release target: {target}",
+      "rolloutCreateTitle": "Confirm rollout creation",
+      "rolloutCreateDescription": "The rollout plan affects version selection for selected tenants or percentage traffic. Confirm stable and candidate versions before continuing.",
+      "rolloutRollbackTitle": "Confirm rollout rollback",
+      "rolloutRollbackDescription": "Rollback switches this rollout plan back to stableVersion to handle abnormal metrics or quality issues.",
+      "rolloutImpact": "Rollout target: {target}",
+      "rolloutPercentImpact": "Rollout percent: {percent}%",
+      "humanDecisionTitle": "Confirm human review decision",
+      "humanDecisionDescription": "The human decision updates review ticket status and may feed eval sets or rule improvement suggestions.",
+      "humanDecisionImpact": "Human decision: {decision}",
+      "reviewTicketImpact": "Review ticket: {id}",
+      "publish": "Confirm publish",
+      "forcePublish": "Confirm force publish",
+      "rollback": "Confirm rollback",
+      "createRollout": "Confirm rollout",
+      "submitDecision": "Confirm decision"
+    }
+  },
+  "enums": {
+    "decision": {
+      "PASS": "Pass",
+      "REJECT": "Reject",
+      "MANUAL_REVIEW": "Manual review",
+      "ALLOW_WITH_WARNING": "Allow with warning",
+      "NEED_MORE_INFO": "Need more info"
+    },
+    "riskLevel": {
+      "NONE": "No risk",
+      "LOW": "Low risk",
+      "MEDIUM": "Medium risk",
+      "HIGH": "High risk",
+      "CRITICAL": "Critical risk"
+    },
+    "severity": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "CRITICAL": "Critical"
+    },
+    "riskCategory": {
+      "DISCRIMINATION": "Discrimination",
+      "FEE_DEPOSIT": "Fees and deposits",
+      "PRIVACY": "Privacy",
+      "FALSE_OR_MISLEADING": "False or misleading",
+      "INCOMPLETE_INFORMATION": "Incomplete information",
+      "LABOR_CONTRACT_RISK": "Labor contract risk",
+      "PLATFORM_POLICY": "Platform policy",
+      "OTHER": "Other"
+    },
+    "reviewDecision": {
+      "APPROVE": "Approve",
+      "REJECT": "Reject",
+      "REQUEST_REVISION": "Request revision"
+    },
+    "feedbackType": {
+      "FALSE_POSITIVE": "False positive",
+      "FALSE_NEGATIVE": "False negative",
+      "WRONG_CATEGORY": "Wrong category",
+      "WRONG_SEVERITY": "Wrong severity",
+      "WRONG_EVIDENCE": "Wrong evidence",
+      "BAD_REWRITE": "Unsafe rewrite",
+      "RULE_TOO_BROAD": "Rule too broad",
+      "RULE_TOO_NARROW": "Rule too narrow",
+      "NEEDS_NEW_RULE": "Needs new rule",
+      "VALID_RESULT": "Valid result"
+    }
+  },
+  "auditWorkbench": {
+    "hero": {
+      "eyebrow": "Job Audit Workbench",
+      "title": "Job audit workbench",
+      "description": "Review job input, risk location, evidence, compliant rewrite and human feedback in one workspace, without asking reviewers to read raw JSON."
+    },
+    "input": {
+      "eyebrow": "Input",
+      "title": "Job input",
+      "required": "Fields marked * are required",
+      "jobTitle": "Job title *",
+      "jobTitlePlaceholder": "Example: Administrative Specialist",
+      "companyName": "Company name *",
+      "companyNamePlaceholder": "Example: Acme Technology Co., Ltd.",
+      "location": "Location",
+      "locationPlaceholder": "Example: Beijing",
+      "salary": "Salary",
+      "salaryPlaceholder": "Example: 8k-15k",
+      "employmentType": "Employment type",
+      "employmentTypes": {
+        "fullTime": "Full-time",
+        "partTime": "Part-time",
+        "internship": "Internship",
+        "contract": "Contract"
+      },
+      "description": "Job description *",
+      "descriptionPlaceholder": "Paste the full job description, including responsibilities, requirements, benefits and notes…",
+      "useDemoCase": "Use demo case",
+      "submit": "Start audit",
+      "submitting": "Auditing…"
+    },
+    "actions": {
+      "reset": "Reset",
+      "copied": "Copied",
+      "copyRewrite": "Copy rewrite",
+      "copySummary": "Copy summary",
+      "feedback": "Submit feedback",
+      "saveEval": "Save as eval case",
+      "reaudit": "Re-audit",
+      "highRiskTitle": "Needs attention",
+      "highRiskDescription": "This result recommends rejection or manual review. Check matched text and evidence first.",
+      "readyTitle": "Ready for next step",
+      "readyDescription": "Use this result for audit records, feedback, or employer revision guidance.",
+      "close": "Close",
+      "cancel": "Cancel"
+    },
+    "result": {
+      "riskScore": "Risk score",
+      "scoreEstimated": "Estimated from risk level",
+      "scoreProvided": "Provided by audit result",
+      "decision": "Decision",
+      "riskLevel": "Risk level",
+      "findingCount": "Findings",
+      "auditId": "Audit ID",
+      "createdAt": "Created at",
+      "loadingLabel": "Audit result loading"
+    },
+    "finding": {
+      "eyebrow": "Findings",
+      "title": "Findings",
+      "matchedText": "Matched text",
+      "noMatchedText": "No source fragment to display",
+      "reason": "Reason",
+      "suggestion": "Suggestion",
+      "defaultSuggestion": "Review and revise based on the cited rule evidence.",
+      "ruleId": "Rule",
+      "decision": "Suggested decision",
+      "confidence": "Confidence",
+      "evidenceCount": "Evidence"
+    },
+    "common": {
+      "unlinked": "Unlinked"
+    },
+    "evidence": {
+      "eyebrow": "Evidence",
+      "title": "Evidence details",
+      "drawerTitle": "Evidence drawer",
+      "openDrawer": "Open evidence",
+      "emptyTitle": "No linked evidence",
+      "emptyDescription": "This finding did not return legal, platform or internal policy evidence. Confirm manually before using it as a learning case.",
+      "noQuote": "No quote is available for this evidence.",
+      "id": "Evidence ID",
+      "version": "Version",
+      "url": "Source"
+    },
+    "rewrite": {
+      "eyebrow": "Rewrite",
+      "title": "Compliant rewrite",
+      "emptyTitle": "No rewrite available",
+      "emptyDescription": "The audit did not generate a rewrite, or this posting does not need one."
+    },
+    "feedback": {
+      "eyebrow": "Feedback",
+      "title": "Human feedback",
+      "type": "Feedback type",
+      "comment": "Comment",
+      "placeholder": "Explain false positives, missed risks, evidence issues, or why a new rule may be needed…",
+      "submit": "Submit feedback"
+    },
+    "source": {
+      "eyebrow": "Source",
+      "title": "Source locator",
+      "highlightHint": "Click a finding to locate"
+    },
+    "report": {
+      "auditId": "Audit ID",
+      "decision": "Decision",
+      "risk": "Risk level",
+      "summary": "Summary",
+      "findings": "Findings",
+      "noFindings": "Findings: none"
+    },
+    "empty": {
+      "title": "Waiting for audit",
+      "description": "Enter job details on the left and start an audit. The result will appear here as review cards."
+    },
+    "noRisk": {
+      "title": "No risks identified by the current rule set",
+      "description": "Keep human sampling in place and add new edge cases to the evaluation set when they appear."
+    },
+    "errors": {
+      "title": "Audit failed",
+      "auditFailedStatus": "Audit request failed with HTTP status {status}.",
+      "auditFailed": "Audit request failed. Please try again later.",
+      "saveEvalFailed": "Failed to save the evaluation case. Check whether the evaluation service is available."
+    },
+    "notices": {
+      "summaryCopied": "Audit report summary copied.",
+      "evalSaved": "Saved as an evaluation case.",
+      "feedbackSubmitted": "Feedback has been recorded in this page. It can later be connected to a human review ticket.",
+      "demoCaseLoaded": "Loaded demo case: {title}"
+    },
+    "eval": {
+      "datasetName": "Web workbench saved cases",
+      "datasetDescription": "Evaluation cases manually saved from the job audit workbench"
+    }
+  },
+  "dashboard": {
+    "hero": {
+      "eyebrow": "Dashboard",
+      "title": "Hiring compliance command center",
+      "description": "See audit volume, automation rates, risk distribution, version status, alerts and cost before entering any workspace."
+    },
+    "metrics": {
+      "todayAudits": "Audits today",
+      "autoPassRate": "Auto pass rate",
+      "autoRejectRate": "Auto reject rate",
+      "manualReviewRate": "Manual review rate",
+      "criticalRiskCount": "Critical risks",
+      "currentVersion": "Current stable version",
+      "activeAlerts": "Active alerts",
+      "todayLlmCost": "LLM cost today",
+      "costHelper": "Summed from tenant cost records",
+      "fromAuditRuns": "From current tenant audit runs",
+      "generatedAt": "Metrics generated at"
+    },
+    "runtime": {
+      "title": "Runtime environment",
+      "description": "Stable versions used for the current audit runtime, retained for traceability.",
+      "ruleVersion": "Rule version",
+      "lawKbVersion": "Knowledge base version",
+      "modelVersion": "Model version"
+    },
+    "charts": {
+      "auditTrend": "Last 7 days audit trend",
+      "riskDistribution": "Risk category distribution",
+      "decisionDistribution": "Decision distribution",
+      "topRules": "Top rule hits",
+      "feedbackDistribution": "Human feedback distribution",
+      "alertTrend": "Alert trend",
+      "alerts": "Alerts"
+    },
+    "chartEyebrows": {
+      "trend": "Trend",
+      "risk": "Risk",
+      "decision": "Decision",
+      "feedback": "Feedback",
+      "alerts": "Alerts",
+      "rules": "Rules"
+    },
+    "workspaces": {
+      "audit": "Audit workspace",
+      "auditDescription": "Submit jobs, inspect risk and copy rewrites",
+      "review": "Review workspace",
+      "reviewDescription": "Handle human review and feedback",
+      "rules": "Rules workspace",
+      "rulesDescription": "Manage, test, publish and roll back rules",
+      "evaluation": "Evaluation workspace",
+      "evaluationDescription": "Run evals, red team and release gates",
+      "appeals": "Appeals workspace",
+      "appealsDescription": "Handle employer appeals, re-review and rule feedback",
+      "qa": "QA workspace",
+      "qaDescription": "Sample audit quality, find issues and feed eval sets",
+      "monitoring": "Monitoring workspace",
+      "monitoringDescription": "Track rollout, metrics and alerts",
+      "settings": "Settings workspace",
+      "settingsDescription": "Manage tenants, roles and runtime config"
+    },
+    "tables": {
+      "search": "Search",
+      "filter": "Filter",
+      "all": "All",
+      "ruleId": "Rule ID",
+      "hitCount": "Hits",
+      "status": "Status",
+      "alert": "Alert",
+      "severity": "Severity",
+      "createdAt": "Created at",
+      "active": "Active",
+      "idle": "Idle",
+      "critical": "Critical",
+      "warning": "Warning",
+      "open": "Open",
+      "resolved": "Resolved"
+    },
+    "empty": {
+      "noTrend": "No audit data for the last 7 days",
+      "noRisk": "No risk category distribution yet",
+      "noDecision": "No decision distribution yet",
+      "noRules": "No rule hit data yet",
+      "noFeedback": "No human feedback distribution yet",
+      "noAlertTrend": "No alert trend data yet",
+      "noAlerts": "No alerts",
+      "noAlertsDescription": "There are no monitoring alerts to handle."
+    },
+    "errors": {
+      "title": "Dashboard failed to load",
+      "loadFailed": "Failed to load the operations dashboard. Check whether the API service is available."
+    }
+  },
+  "workspacePages": {
+    "reviewQueue": {
+      "brandTitle": "Human Review Queue",
+      "brandSubtitle": "Human Review Queue",
+      "eyebrow": "Manual review",
+      "title": "Turn human judgment into the next improvement loop.",
+      "description": "Review decisions can enter eval sets or become rule improvement suggestions. MVP uses a fixed reviewerId.",
+      "defaultComment": "Ask the employer to revise the posting according to the Agent suggestions and resubmit.",
+      "defaultDisputeResolution": "Resolved by a senior reviewer.",
+      "defaultRuleResolution": "Recorded for the rule release workflow.",
+      "nav": {
+        "audit": "Back to audit",
+        "evals": "Evaluations",
+        "betaTrial": "Closed beta trial"
+      },
+      "errors": {
+        "ruleSuggestionsLoadFailed": "Failed to load rule suggestions.",
+        "permissionLoadFailed": "Failed to load permission information.",
+        "referenceLoadFailed": "Failed to load labeling reference.",
+        "statsLoadFailed": "Failed to load agreement statistics.",
+        "disputesLoadFailed": "Failed to load disputed cases.",
+        "trainingLoadFailed": "Failed to load training status.",
+        "ticketsLoadFailed": "Failed to load review tickets.",
+        "addToEvalFailed": "Failed to add the case to evals.",
+        "createSuggestionFailed": "Failed to create the rule suggestion.",
+        "decisionSubmitFailed": "Failed to submit the human decision.",
+        "multiLabelSubmitFailed": "Failed to submit the reviewer label.",
+        "disputeResolveFailed": "Failed to resolve the disputed case.",
+        "suggestionResolveFailed": "Failed to resolve the rule suggestion.",
+        "trainingCompleteFailed": "Failed to confirm training completion."
+      },
+      "notices": {
+        "decisionSubmitted": "Human decision submitted: {decision}",
+        "labelSubmitted": "Submitted label for {reviewerId}.",
+        "disputeResolved": "Disputed case resolved.",
+        "suggestionResolved": "Rule suggestion marked as resolved.",
+        "trainingCompleted": "Training confirmation recorded."
+      },
+      "training": {
+        "eyebrow": "Training required",
+        "title": "Complete training before first use",
+        "description": "To avoid noisy feedback in eval sets, review the help center definitions for feedback types, common misjudgments and appeal handling.",
+        "openHelp": "Open help center",
+        "confirm": "I have completed reading"
+      },
+      "pending": {
+        "eyebrow": "Pending",
+        "title": "Pending review tickets",
+        "loading": "Loading review tickets…",
+        "empty": "No pending review tickets."
+      },
+      "status": {
+        "pending": "Pending",
+        "completed": "Completed"
+      },
+      "agentConclusion": {
+        "eyebrow": "Agent conclusion"
+      },
+      "facts": {
+        "agentDecision": "Agent decision",
+        "riskLevel": "Risk level",
+        "status": "Status"
+      },
+      "findings": {
+        "eyebrow": "Findings",
+        "title": "Risk details and matched fragments",
+        "matchedText": "Matched source text",
+        "noMatchedText": "No matched fragment to display",
+        "explanation": "Risk explanation",
+        "suggestion": "Agent suggestion",
+        "defaultSuggestion": "Confirm manually before taking action."
+      },
+      "evidence": {
+        "eyebrow": "Evidence",
+        "title": "Evidence",
+        "noQuote": "No excerpt provided"
+      },
+      "feedback": {
+        "eyebrow": "Feedback",
+        "title": "Final human decision",
+        "reviewerId": "Reviewer ID",
+        "finalDecision": "Label decision",
+        "feedbackType": "Feedback type ⓘ",
+        "feedbackTypeTooltip": "Select the type that best explains the gap between the human decision and Agent output. Avoid subjective preferences in eval data.",
+        "riskLevel": "Risk level",
+        "categories": "Risk categories, comma-separated",
+        "addToEval": "Add to eval set",
+        "createSuggestion": "Create rule improvement suggestion",
+        "comment": "Review comment",
+        "currentType": "Current feedback type: {type}.",
+        "defaultTypeMeaning": "Select a clear feedback type.",
+        "viewDefinitions": "View full definitions",
+        "submitMultiLabel": "Submit multi-reviewer label",
+        "noPermission": "The current role cannot submit human reviews or labels.",
+        "submitted": "Submitted: {decision}",
+        "noComment": "No additional comment"
+      },
+      "noSelected": "Select a review ticket to view details.",
+      "guide": {
+        "eyebrow": "Labeling guide",
+        "riskTitle": "Risk level guide",
+        "feedbackEyebrow": "Feedback",
+        "feedbackTitle": "Feedback type guide",
+        "agreementEyebrow": "Agreement",
+        "agreementTitle": "Reviewer agreement",
+        "agreementSummary": "Agree {agree} / Disagree {disagree}",
+        "noAgreementStats": "No multi-reviewer statistics yet."
+      },
+      "disputes": {
+        "eyebrow": "Disputes",
+        "title": "Disputed cases",
+        "labelCount": "{count} labels",
+        "resolveWithCurrentLabel": "Resolve with current label",
+        "empty": "No disputed cases."
+      },
+      "suggestions": {
+        "eyebrow": "Rule suggestions",
+        "title": "Rule improvement suggestions",
+        "resolve": "Mark as resolved",
+        "empty": "No open rule improvement suggestions."
+      }
+    },
+    "settings": {
+      "eyebrow": "Settings",
+      "title": "System settings",
+      "description": "Manage tenants, permissions, API keys, runtime configuration, data retention and security policies.",
+      "tenantHelper": "All data access must carry tenantId",
+      "rbacHelper": "Sensitive operations are role-scoped",
+      "privacyHelper": "Logs and LLM input are redacted by default",
+      "emptyTitle": "Settings center placeholder",
+      "emptyDescription": "Before production rollout, connect identity, tenant configuration, API keys and data retention policies here."
+    },
+    "qa": {
+      "eyebrow": "QA",
+      "title": "Audit QA center",
+      "description": "Sample Agent audits, human reviews, appeals, evidence citations and rewrite safety on a regular basis.",
+      "samplingHelper": "Supports random and high-risk sampling",
+      "issuesHelper": "Can create rule improvement suggestions",
+      "regressionHelper": "Failed samples can enter eval sets",
+      "emptyTitle": "QA inspection page placeholder",
+      "emptyDescription": "The backend QA inspection API has MVP capability. Future work can create inspection jobs and inspect quality issues here."
+    },
+    "redTeam": {
+      "eyebrow": "Red Team",
+      "title": "Red team testing",
+      "description": "Track implicit expressions, evasion wording, prompt injection and rule bypass samples.",
+      "datasetHelper": "Built-in adversarial sample target",
+      "scriptHelper": "Optional before release",
+      "targetHelper": "Focus on bypass failures",
+      "emptyTitle": "Red team detail placeholder",
+      "emptyDescription": "Run npm run eval:redteam from the command line. Failed cases can feed eval sets or rule improvement suggestions."
+    },
+    "appeals": {
+      "eyebrow": "Appeals",
+      "title": "Appeal review center",
+      "description": "Employer appeals must be finally decided by a human reviewer. The Appeal Agent only organizes evidence and arguments for both sides.",
+      "agentRoleHelper": "Cannot overturn the original decision automatically",
+      "finalHelper": "Final decision requires human review",
+      "feedbackHelper": "Successful appeals can feed eval sets",
+      "emptyTitle": "Appeal list placeholder",
+      "emptyDescription": "Appeal backend capability is available. Productized pages can later show employer appeals, supplementary notes and re-review reports here."
+    },
+    "monitoring": {
+      "brandTitle": "Job Compliance Console",
+      "brandSubtitle": "Monitoring & Rollout",
+      "navAudit": "Audit",
+      "navRules": "Rules",
+      "navEvals": "Evaluations",
+      "navReleases": "Releases",
+      "heroEyebrow": "Operations",
+      "heroTitle": "Monitor rollout and roll back quickly.",
+      "heroDescription": "Inspect audit metrics, rule version distribution, rollout plans and alerts. Operators can roll back when needed.",
+      "requestFailed": "Request failed (HTTP {status})",
+      "loadFailed": "Failed to load monitoring data.",
+      "createSuccess": "Rollout plan created.",
+      "createFailed": "Failed to create rollout plan.",
+      "rollbackSuccess": "Rolled back to stableVersion.",
+      "rollbackFailed": "Rollback failed.",
+      "noManagePermission": "The current role cannot create rollout plans.",
+      "metricsTitle": "Monitoring overview",
+      "versionsTitle": "Rule version distribution",
+      "auditCount": "{count} audits",
+      "noVersionDistribution": "No audit version distribution yet.",
+      "newRolloutEyebrow": "New rollout",
+      "newRolloutTitle": "Create rollout plan",
+      "target": "Target",
+      "ruleVersion": "Rule version",
+      "lawKbVersion": "Knowledge base version",
+      "modelVersion": "Model version",
+      "creating": "Creating…",
+      "createRollout": "Create rollout plan",
+      "rolloutsTitle": "Rollout plans",
+      "rollbackStable": "Roll back to stableVersion",
+      "noRollouts": "No rollout plans.",
+      "alertsTitle": "Alerts",
+      "noAlerts": "No alerts."
+    }
+  },
+  "common": {
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "loading": "Loading…",
+      "empty": "No data",
+      "notRecorded": "Not recorded"
+    },
+    "actions": {
+      "create": "Create",
+      "save": "Save",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "publish": "Publish",
+      "rollback": "Rollback",
+      "copy": "Copy",
+      "submit": "Submit",
+      "close": "Close",
+      "confirm": "Confirm",
+      "search": "Search",
+      "filter": "Filter"
+    },
+    "errors": {
+      "requestFailed": "Request failed (HTTP {status})",
+      "unknown": "Operation failed. Please try again later."
+    },
+    "validation": {
+      "required": "Please complete the required field.",
+      "maxLength": "The content is too long. Shorten it and try again.",
+      "invalidJsonl": "Invalid JSONL format."
+    },
+    "toast": {
+      "saved": "Saved.",
+      "copied": "Copied.",
+      "submitted": "Submitted.",
+      "created": "Created.",
+      "updated": "Updated."
+    }
+  },
+  "legacy": {
+    "岗位合规审核台": "Job Compliance Console",
+    "Job Compliance Review": "Job Compliance Review",
+    "New audit": "New audit",
+    "发布之前，先把风险说清楚。": "Clarify compliance risk before publishing.",
+    "输入岗位原文，系统将基于当前规则集检查歧视、收费、隐私、误导与信息完整性风险。": "Enter the job posting text. The system checks discrimination, fees, privacy, misleading claims and completeness risks against the current rule set.",
+    "岗位信息": "Job information",
+    "带 * 的字段为必填项": "Fields marked * are required",
+    "岗位标题 *": "Job title *",
+    "公司名称 *": "Company name *",
+    "工作地点": "Location",
+    "薪资": "Salary",
+    "用工类型": "Employment type",
+    "岗位描述 *": "Job description *",
+    "开始审核": "Start audit",
+    "正在审核…": "Auditing…",
+    "审核说明": "Audit notes",
+    "输入": "Input",
+    "输出": "Output",
+    "审核结论": "Decision",
+    "风险等级": "Risk level",
+    "风险项": "Findings",
+    "审核编号": "Audit ID",
+    "风险明细": "Risk details",
+    "修改建议汇总": "Remediation summary",
+    "规则与依据": "Rules and evidence",
+    "合规改写": "Compliant rewrite",
+    "命中的原文片段": "Matched source text",
+    "风险解释": "Risk explanation",
+    "修改建议": "Suggestion",
+    "未发现当前规则集可识别的岗位风险。": "No risks were identified by the current rule set.",
+    "人工复核台": "Human Review Queue",
+    "规则管理后台": "Rule Management",
+    "评估台": "Evaluation Center",
+    "监控灰度": "Monitoring & Rollout",
+    "封闭试运行": "Closed Beta Trial",
+    "帮助中心": "Help Center",
+    "事故演练与应急控制台": "Incident Response Console",
+    "UAT 验收总览": "UAT Acceptance Overview",
+    "创建 Beta 项目": "Create Beta Program",
+    "Beta 试运行总览": "Beta Trial Overview",
+    "使用模式配置": "Mode Configuration",
+    "使用人员名单": "Participants",
+    "每日测试报告": "Daily Test Report",
+    "检查表": "Checklist",
+    "问题反馈列表": "Feedback List",
+    "规则集": "Rule Sets",
+    "规则列表": "Rule List",
+    "规则测试": "Rule Test",
+    "发布记录": "Publish Records",
+    "规则改进建议": "Rule Improvement Suggestions",
+    "监控总览": "Monitoring Overview",
+    "规则版本分布": "Rule Version Distribution",
+    "创建灰度计划": "Create Rollout Plan",
+    "灰度计划列表": "Rollout Plans",
+    "告警列表": "Alerts",
+    "无风险": "No risk",
+    "低风险": "Low risk",
+    "中风险": "Medium risk",
+    "高风险": "High risk",
+    "严重风险": "Critical risk",
+    "通过": "Pass",
+    "拦截": "Reject",
+    "人工复核": "Manual review",
+    "警告后允许": "Allow with warning",
+    "需要补充信息": "Need more info",
+    "例如：行政专员": "Example: Administrative Specialist",
+    "例如：某某科技有限公司": "Example: Acme Technology Co., Ltd.",
+    "例如：北京": "Example: Beijing",
+    "例如：8k-15k": "Example: 8k-15k",
+    "粘贴完整岗位描述，包括岗位职责、任职要求、福利待遇及其他说明……": "Paste the full job description, including responsibilities, requirements, benefits and notes…",
+    "全职": "Full-time",
+    "兼职": "Part-time",
+    "实习": "Internship",
+    "劳务 / 合同制": "Contract",
+    "当前审核未返回法规或规则依据。": "No legal or platform evidence was returned for this audit.",
+    "无可展示的原文片段": "No source fragment to display",
+    "请结合规则依据进行人工复核和修改。": "Review and revise based on the cited rule evidence.",
+    "未关联": "Unlinked",
+    "规则": "Rule",
+    "结论": "Decision",
+    "版本": "Version",
+    "未标注版本": "Version not provided",
+    "来源字段": "Source field"
+  }
+}
