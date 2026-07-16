@@ -85,4 +85,10 @@ describe('rewrite secondary review', () => {
       }).decision,
     ).toBe('REJECTED');
   });
+  it('uses semantic failed as rejection and warning as human review', () => {
+    expect(decideRewriteSafety({ ...base, semantic: 'FAILED' }).decision).toBe('REJECTED');
+    expect(decideRewriteSafety({ ...base, semantic: 'WARNING' }).decision).toBe(
+      'REQUIRES_HUMAN_REVIEW',
+    );
+  });
 });

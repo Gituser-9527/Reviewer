@@ -34,6 +34,13 @@ describe('enrichment query api', () => {
                 introducedFindingKeys: [],
                 hasCriticalOrHighFindings: false,
               },
+              semanticReview: {
+                status: 'UNAVAILABLE',
+                reasonCodes: ['SEMANTIC_CLASSIFIER_NOT_CONFIGURED'],
+                summary: 'not configured',
+                risks: [],
+                isMock: false,
+              },
             },
             result: { description: 'safe' },
           },
@@ -51,6 +58,7 @@ describe('enrichment query api', () => {
         safety_result: {
           findingCoverage: { addressedFindingIds: ['f1'] },
           ruleEngineReview: { ruleVersion: '1.0.0' },
+          semanticReview: { status: 'UNAVAILABLE' },
         },
       },
     });

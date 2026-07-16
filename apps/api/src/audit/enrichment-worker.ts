@@ -15,6 +15,7 @@ import {
   type RewriteRuleEngineAdapter,
 } from './rewrite-rule-engine-adapter.js';
 import { decideRewriteSafety } from './rewrite-secondary-review.js';
+import { RewriteSemanticClassifierAdapter } from './rewrite-semantic-classifier-adapter.js';
 
 export const enrichmentTypes = ['AUDIT_GENERATE_EXPLANATIONS', 'AUDIT_GENERATE_REWRITE'] as const;
 export type EnrichmentType = (typeof enrichmentTypes)[number];
@@ -139,6 +140,7 @@ export class EnrichmentWorker {
     private readonly resolver?: RuntimeProviderResolver,
     private readonly contextLoader?: EnrichmentContextLoader,
     private readonly ruleEngineAdapter?: RewriteRuleEngineAdapter,
+    private readonly semanticClassifierAdapter?: RewriteSemanticClassifierAdapter,
   ) {}
   async runOnce(): Promise<boolean> {
     await this.repository.releaseExpiredLocks();
@@ -213,13 +215,22 @@ export class EnrichmentWorker {
           context,
           rewrite: valid.value,
         });
+        const semanticReview = await (
+          this.semanticClassifierAdapter ?? new RewriteSemanticClassifierAdapter()
+        ).review({
+          context,
+          rewrite: valid.value,
+          findingCoverage,
+          rewriteSafety: valid.safety,
+          ruleEngineReview,
+        });
         const secondaryReview = decideRewriteSafety({
           protectedFactViolations: valid.safety.protectedFactViolations,
           ungroundedFacts: [],
           criticalRiskRemaining: false,
           highRiskRemaining: false,
           newHighRisk: false,
-          semantic: 'UNAVAILABLE',
+          semantic: semanticReview.status,
           reflection: 'UNAVAILABLE',
           hallucinationDetected: false,
           findingCoverage,
@@ -229,6 +240,7 @@ export class EnrichmentWorker {
           rewriteSafety: valid.safety,
           findingCoverage,
           ruleEngineReview,
+          semanticReview,
           secondaryReview,
         };
       }
@@ -322,6 +334,7 @@ async function main(): Promise<void> {
     undefined,
     new PostgresAuditEnrichmentContextLoader(repository.pool),
     new ProductionRewriteRuleEngineAdapter(),
+    new RewriteSemanticClassifierAdapter(),
   );
   const once = process.argv.includes('--once');
   let stopping = false;

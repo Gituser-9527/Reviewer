@@ -196,6 +196,7 @@ describe('EnrichmentWorker', () => {
       safetyResult: {
         findingCoverage: { unaddressedFindingIds: ['finding-a'] },
         ruleEngineReview: { status: 'COMPLETED' },
+        semanticReview: { status: 'UNAVAILABLE' },
         secondaryReview: { decision: 'REJECTED' },
       },
     });
