@@ -47,6 +47,9 @@ import { registerTrainingRoutes } from './training/routes.js';
 import { TrainingService } from './training/service.js';
 import { registerUatRoutes } from './uat/routes.js';
 import { UatAcceptanceService } from './uat/service.js';
+import { SecretEncryptionService } from '@job-compliance/core';
+import { registerSettingsRoutes } from './settings/routes.js';
+import { LLMSettingsService } from './settings/service.js';
 
 const serviceName = 'job-compliance-api';
 
@@ -108,6 +111,8 @@ export interface BuildAppOptions {
   incidentResponseService?: IncidentResponseService;
   /** Optional UAT acceptance service used by tests or future persistence adapters. */
   uatAcceptanceService?: UatAcceptanceService;
+  /** Tenant BYOK configuration service. */
+  llmSettingsService?: LLMSettingsService;
 }
 
 interface DefaultStores {
@@ -209,6 +214,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       evalStore,
       runtimeServices,
     });
+  const llmSettingsService = options.llmSettingsService ?? new LLMSettingsService(
+    process.env.LLM_SECRET_ENCRYPTION_KEY ? SecretEncryptionService.fromEnv() : undefined,
+  );
 
   registerOperationalLogging(app);
 
@@ -312,6 +320,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/metrics', async (_request, reply) => sendMetrics(reply));
 
   registerAuthRoutes(app, authServices);
+  registerSettingsRoutes(app, llmSettingsService, authServices);
 
   registerAuditRoutes(app, {
     store: auditRunStore,

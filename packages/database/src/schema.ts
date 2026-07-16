@@ -1838,6 +1838,22 @@ export const llmUsageRecords = pgTable(
   ],
 );
 
+/** Encrypted tenant BYOK connections. The API key ciphertext is never selected by settings APIs. */
+export const llmConnections = pgTable(
+  'llm_connections',
+  {
+    id: text('id').primaryKey(), tenantId: text('tenant_id').notNull(), displayName: text('display_name').notNull(), provider: text('provider').notNull(), baseUrl: text('base_url'),
+    encryptedApiKey: jsonb('encrypted_api_key').notNull(), apiKeyLastFour: text('api_key_last_four'), auditModel: text('audit_model').notNull(), timeoutMs: integer('timeout_ms').notNull(), maxOutputTokens: integer('max_output_tokens').notNull(), temperature: real('temperature').notNull(), maxRetries: integer('max_retries').notNull(), status: text('status').notNull(), isDefault: boolean('is_default').notNull().default(false), lastVerifiedAt: timestamp('last_verified_at', { withTimezone: true }), lastSuccessAt: timestamp('last_success_at', { withTimezone: true }), lastFailureAt: timestamp('last_failure_at', { withTimezone: true }), lastErrorCode: text('last_error_code'), createdBy: text('created_by').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [index('llm_connections_tenant_status_idx').on(table.tenantId, table.status), index('llm_connections_tenant_default_idx').on(table.tenantId, table.isDefault)],
+);
+
+export const auditRoutingPolicies = pgTable(
+  'audit_routing_policies',
+  { id: text('id').primaryKey(), tenantId: text('tenant_id').notNull(), version: text('version').notNull(), enabled: boolean('enabled').notNull(), payload: jsonb('payload').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull() },
+  (table) => [uniqueIndex('audit_routing_policies_tenant_idx').on(table.tenantId), index('audit_routing_policies_version_idx').on(table.version)],
+);
+
 export const costUsageDaily = pgTable(
   'cost_usage_daily',
   {

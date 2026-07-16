@@ -26,6 +26,13 @@
     "lint": "eslint .",
     "test": "npm run build:packages && vitest run",
     "test:watch": "vitest",
+    "test:settings": "vitest run apps/api/src/settings",
+    "test:llm": "vitest run packages/core/src/llm packages/core/src/security/secret-encryption.test.ts",
+    "test:beta-stability": "vitest run apps/api/src/beta-program/routes.test.ts",
+    "test:audit-routing": "vitest run packages/core/src/orchestrator",
+    "test:enrichment-worker": "vitest run apps/api/src/audit",
+    "test:ui": "vitest run apps/web",
+    "check:i18n": "npm run build --workspace @job-compliance/web",
     "typecheck": "npm run build:packages && npm run typecheck --workspace @job-compliance/api && npm run typecheck --workspace @job-compliance/web"
   },
   "devDependencies": {

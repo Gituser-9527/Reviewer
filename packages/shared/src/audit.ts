@@ -261,6 +261,8 @@ export interface AuditResult {
   auditId: string;
   /** Final audit decision. */
   decision: AuditDecision;
+  /** Layer execution trace; only administrators should receive full details. */
+  routingTrace?: unknown;
   /** Highest severity represented in the result, when findings exist. */
   severity?: Severity;
   /** Explicit highest risk level returned to API consumers. */

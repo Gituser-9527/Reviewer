@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import {
-  auditJobPosting,
+  LayeredAuditEngine,
   LocalKnowledgeRetriever,
   MockEvidenceRetriever,
   YamlRuleEngine,
@@ -103,7 +103,7 @@ export const defaultAuditJob: AuditJobHandler = async (input, request, runtime) 
     ruleVersion,
   );
   const ruleEngine = await YamlRuleEngine.fromDirectory(selectedRulesDirectory);
-  return auditJobPosting(input, {
+  return new LayeredAuditEngine().audit(input, {
     tenantId: request.tenantId,
     jurisdiction: request.options.jurisdiction,
     ruleEngine,

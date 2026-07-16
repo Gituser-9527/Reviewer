@@ -29,6 +29,8 @@ export const permissions = [
   'eval:delete',
   'global:manage',
   'audit_log:read',
+  'settings:read',
+  'settings:write',
 ] as const;
 
 export type Permission = (typeof permissions)[number];
@@ -69,7 +71,7 @@ export interface RulePublishApprovalRecord {
 
 const permissionsByRole: Record<Role, Permission[]> = {
   SUPER_ADMIN: [...permissions],
-  TENANT_ADMIN: ['audit:read', 'review:read', 'eval:read'],
+  TENANT_ADMIN: ['audit:read', 'review:read', 'eval:read', 'settings:read', 'settings:write'],
   COMPLIANCE_MANAGER: [
     'audit:read',
     'review:read',
@@ -80,6 +82,8 @@ const permissionsByRole: Record<Role, Permission[]> = {
     'runtime:read',
     'eval:read',
     'audit_log:read',
+    'settings:read',
+    'settings:write',
   ],
   REVIEWER: ['audit:read', 'review:read', 'review:write'],
   RULE_OPERATOR: ['rule:read', 'rule:edit_draft', 'review:read', 'eval:read'],
