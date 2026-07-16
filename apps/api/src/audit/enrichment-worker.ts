@@ -43,10 +43,13 @@ export interface EnrichmentRepository {
     tenantId: string;
     auditRunId?: string;
     asyncJobId?: string;
+    connectionId?: string;
     provider: string;
     model: string;
     taskType?: string;
     promptVersion?: string;
+    inputTokens?: number;
+    outputTokens?: number;
     durationMs?: number;
     success?: boolean;
     errorCode?: string;
@@ -153,6 +156,7 @@ export class EnrichmentWorker {
     let resolved:
       | { provider: string; model: string; isMock: boolean; connectionId?: string }
       | undefined;
+    let completionUsage: { inputTokens?: number; outputTokens?: number } | undefined;
     try {
       if (
         !enrichmentTypes.includes(job.type as EnrichmentType) ||
@@ -185,6 +189,14 @@ export class EnrichmentWorker {
           ],
           { responseFormat: 'json_object', maxTokens: 512 },
         );
+        completionUsage = {
+          ...(completion.usage?.promptTokens === undefined
+            ? {}
+            : { inputTokens: completion.usage.promptTokens }),
+          ...(completion.usage?.completionTokens === undefined
+            ? {}
+            : { outputTokens: completion.usage.completionTokens }),
+        };
         result = JSON.parse(completion.content) as Record<string, unknown>;
       } else if (this.provider) {
         result = await this.provider.generate(job.type as EnrichmentType, payload);
@@ -279,6 +291,7 @@ export class EnrichmentWorker {
         model: resolved.model,
         taskType: job.type,
         promptVersion: payload.promptVersion,
+        ...(completionUsage === undefined ? {} : completionUsage),
         durationMs: Date.now() - started,
         success: true,
         isMock: resolved.isMock,

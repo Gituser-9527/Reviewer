@@ -40,6 +40,7 @@
     "test:enrichment-worker": "vitest run apps/api/src/audit",
     "test:async-jobs": "vitest run apps/api/src/audit/enrichment-worker.test.ts",
     "test:production-enrichment": "vitest run apps/api/src/audit/enrichment-worker.test.ts apps/api/src/audit/rewrite-safety.test.ts apps/api/src/audit/enrichment-api.test.ts apps/api/src/audit/rewrite-secondary-review.test.ts",
+    "test:production-enrichment:postgres": "powershell -ExecutionPolicy Bypass -File scripts/run-production-enrichment-postgres.ps1",
     "worker:enrichment": "tsx apps/api/src/audit/enrichment-worker.ts",
     "worker:enrichment:once": "tsx apps/api/src/audit/enrichment-worker.ts --once",
     "test:ui": "vitest run apps/web",
