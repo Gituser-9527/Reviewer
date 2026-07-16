@@ -9,6 +9,8 @@ import {
   PostgresAuditEnrichmentContextLoader,
   type AuditEnrichmentContext,
 } from './enrichment-context-loader.js';
+import { calculateRewriteFindingCoverage } from './rewrite-finding-coverage.js';
+import { decideRewriteSafety } from './rewrite-secondary-review.js';
 
 export const enrichmentTypes = ['AUDIT_GENERATE_EXPLANATIONS', 'AUDIT_GENERATE_REWRITE'] as const;
 export type EnrichmentType = (typeof enrichmentTypes)[number];
@@ -50,6 +52,7 @@ export interface EnrichmentRepository {
     taskType: string;
     status: string;
     result?: unknown;
+    safetyResult?: unknown;
     errorCode?: string;
     promptVersion?: string;
     provider?: string;
@@ -178,26 +181,48 @@ export class EnrichmentWorker {
         result = await this.provider.generate(job.type as EnrichmentType, payload);
         resolved = { provider: 'MOCK', model: 'mock-enrichment-v1', isMock: true };
       } else throw new Error('NO_ACTIVE_LLM_CONNECTION');
-      const valid =
-        job.type === 'AUDIT_GENERATE_EXPLANATIONS'
-          ? validateExplanationRuntime(
-              result,
-              payload.auditRunId,
-              new Set(context?.findings.map((f) => f.id) ?? []),
-              new Set(context?.evidence.map((e) => e.id) ?? []),
-            )
-          : validateRewriteRuntime(
-              result,
-              context ? protectedFacts(context.originalJob) : {},
-              new Set(context?.findings.map((f) => f.id) ?? []),
-            );
-      if (!valid.ok) throw new Error(valid.code);
+      let safetyResult: unknown;
+      if (job.type === 'AUDIT_GENERATE_EXPLANATIONS') {
+        const valid = validateExplanationRuntime(
+          result,
+          payload.auditRunId,
+          new Set(context?.findings.map((f) => f.id) ?? []),
+          new Set(context?.evidence.map((e) => e.id) ?? []),
+        );
+        if (!valid.ok) throw new Error(valid.code);
+      } else {
+        if (!context) throw new Error('AUDIT_CONTEXT_REQUIRED');
+        const valid = validateRewriteRuntime(
+          result,
+          protectedFacts(context.originalJob),
+          new Set(context.findings.map((f) => f.id)),
+        );
+        if (!valid.ok) throw new Error(valid.code);
+        const findingCoverage = calculateRewriteFindingCoverage({
+          findings: context.findings,
+          originalJob: context.originalJob,
+          rewrite: valid.value,
+        });
+        const secondaryReview = decideRewriteSafety({
+          protectedFactViolations: valid.safety.protectedFactViolations,
+          ungroundedFacts: [],
+          criticalRiskRemaining: false,
+          highRiskRemaining: false,
+          newHighRisk: false,
+          semantic: 'UNAVAILABLE',
+          reflection: 'UNAVAILABLE',
+          hallucinationDetected: false,
+          findingCoverage,
+        });
+        safetyResult = { rewriteSafety: valid.safety, findingCoverage, secondaryReview };
+      }
       await this.repository.saveEnrichment?.({
         tenantId: job.tenantId,
         auditRunId: payload.auditRunId,
         taskType: job.type,
         status: 'COMPLETED',
         result,
+        ...(safetyResult === undefined ? {} : { safetyResult }),
         promptVersion: payload.promptVersion,
         provider: resolved.provider,
         model: resolved.model,

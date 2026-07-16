@@ -82,6 +82,7 @@ interface FindingRow extends Record<string, unknown> {
   message: string | null;
   suggestion: string | null;
   evidence_id: string | null;
+  payload: { metadata?: { matchedText?: unknown } } | null;
 }
 
 interface EvidenceLinkRow extends Record<string, unknown> {
@@ -126,7 +127,7 @@ export class PostgresAuditEnrichmentContextLoader {
     }
 
     const findings = await this.database.query<FindingRow>(
-      `SELECT finding_id, rule_id, category, severity, title, message, suggestion, evidence_id
+      `SELECT finding_id, rule_id, category, severity, title, message, suggestion, evidence_id, payload
          FROM audit_findings
         WHERE tenant_id = $1 AND audit_run_id = $2`,
       [input.tenantId, input.auditRunId],
@@ -174,21 +175,24 @@ export class PostgresAuditEnrichmentContextLoader {
         ...(job.employment_type === null ? {} : { employmentType: job.employment_type }),
         description: payload.description,
       },
-      findings: findings.rows.map((finding) => ({
-        id: finding.finding_id,
-        ...(finding.rule_id === null ? {} : { ruleId: finding.rule_id }),
-        category: finding.category,
-        severity: finding.severity,
-        title: finding.title,
-        ...(finding.message === null ? {} : { matchedText: finding.message }),
-        ...(finding.suggestion === null ? {} : { recommendation: finding.suggestion }),
-        evidenceIds: [
-          ...new Set([
-            ...(finding.evidence_id === null ? [] : [finding.evidence_id]),
-            ...(linkedEvidenceByFinding.get(finding.finding_id) ?? []),
-          ]),
-        ],
-      })),
+      findings: findings.rows.map((finding) => {
+        const text = matchedText(finding);
+        return {
+          id: finding.finding_id,
+          ...(finding.rule_id === null ? {} : { ruleId: finding.rule_id }),
+          category: finding.category,
+          severity: finding.severity,
+          title: finding.title,
+          ...(text === undefined ? {} : { matchedText: text }),
+          ...(finding.suggestion === null ? {} : { recommendation: finding.suggestion }),
+          evidenceIds: [
+            ...new Set([
+              ...(finding.evidence_id === null ? [] : [finding.evidence_id]),
+              ...(linkedEvidenceByFinding.get(finding.finding_id) ?? []),
+            ]),
+          ],
+        };
+      }),
       evidence: evidenceLinks.rows.map((evidence) => ({
         id: evidence.evidence_id,
         type: evidence.source_type,
@@ -197,4 +201,16 @@ export class PostgresAuditEnrichmentContextLoader {
       })),
     };
   }
+}
+
+function matchedText(finding: FindingRow): string | undefined {
+  const candidate = finding.payload?.metadata?.matchedText;
+  if (Array.isArray(candidate)) {
+    const values = candidate.filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    return values.length === 1 ? values[0] : values.length > 1 ? values.join('\n') : undefined;
+  }
+  if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+  return finding.message === null || finding.message.length === 0 ? undefined : finding.message;
 }

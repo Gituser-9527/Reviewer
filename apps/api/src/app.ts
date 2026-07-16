@@ -113,6 +113,11 @@ export interface BuildAppOptions {
   uatAcceptanceService?: UatAcceptanceService;
   /** Tenant BYOK configuration service. */
   llmSettingsService?: SettingsServicePort;
+  /** Optional persisted enrichment reader used by API integration tests. */
+  observabilityRepository?: Pick<
+    PostgresLLMPersistenceRepository,
+    'saveTrace' | 'findTrace' | 'listUsage' | 'enqueue' | 'listEnrichment'
+  >;
 }
 
 interface DefaultStores {
@@ -215,6 +220,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       runtimeServices,
     });
   const persistenceRepository = process.env.DATABASE_URL?.trim() ? new PostgresLLMPersistenceRepository(process.env.DATABASE_URL) : undefined;
+  const observabilityRepository = options.observabilityRepository ?? persistenceRepository;
   const llmSettingsService = options.llmSettingsService ?? (() => {
     if (process.env.DATABASE_URL?.trim()) {
       if (!process.env.LLM_SECRET_ENCRYPTION_KEY) throw new Error('LLM_SECRET_ENCRYPTION_KEY is required when DATABASE_URL is configured.');
@@ -336,7 +342,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     productService,
     performanceServices,
     incidentResponseService,
-    ...(persistenceRepository === undefined ? {} : { observabilityRepository: persistenceRepository }),
+    ...(observabilityRepository === undefined ? {} : { observabilityRepository }),
     ...(options.auditJob === undefined ? {} : { auditJob: options.auditJob }),
   });
 

@@ -104,4 +104,80 @@ describe('EnrichmentWorker', () => {
     await expect(worker.runOnce()).resolves.toBe(true);
     expect(loaded).toEqual([{ tenantId: 'tenant-a', auditRunId: 'audit-a' }]);
   });
+
+  it('persists rejected rewrite coverage calculated from loader findings and provider changes', async () => {
+    const saved: unknown[] = [];
+    const job = {
+      id: 'rewrite-1',
+      tenantId: 'tenant-a',
+      type: 'AUDIT_GENERATE_REWRITE',
+      status: 'RUNNING',
+      auditRunId: 'audit-a',
+      attemptCount: 1,
+      maxAttempts: 3,
+      payload: {
+        tenantId: 'tenant-a',
+        auditRunId: 'audit-a',
+        jobType: 'AUDIT_GENERATE_REWRITE',
+        promptVersion: 'v1',
+        idempotencyKey: 'audit-a:rewrite:v1',
+      },
+    };
+    class RewriteProvider extends MockEnrichmentProvider {
+      override async generate(): Promise<Record<string, unknown>> {
+        return {
+          description: '欢迎符合岗位要求的候选人',
+          changes: [],
+          preservedFacts: [],
+          warnings: [],
+        };
+      }
+    }
+    const context: AuditEnrichmentContext = {
+      tenantId: 'tenant-a',
+      auditRunId: 'audit-a',
+      decision: 'REVIEW',
+      riskLevel: 'HIGH',
+      language: 'zh-CN',
+      originalJob: { description: '仅限男性' },
+      findings: [
+        {
+          id: 'finding-a',
+          category: 'DISCRIMINATION',
+          severity: 'HIGH',
+          title: '性别限制',
+          matchedText: '仅限男性',
+          evidenceIds: [],
+        },
+      ],
+      evidence: [],
+    };
+    const worker = new EnrichmentWorker(
+      {
+        releaseExpiredLocks: async () => 0,
+        claimNext: async () => job,
+        completeJob: async () => undefined,
+        retryJob: async () => undefined,
+        deadLetter: async () => undefined,
+        createUsage: async () => undefined,
+        saveEnrichment: async (input) => {
+          saved.push(input);
+        },
+      },
+      new RewriteProvider(),
+      'worker-a',
+      undefined,
+      { load: async () => context },
+    );
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      status: 'COMPLETED',
+      safetyResult: {
+        findingCoverage: { unaddressedFindingIds: ['finding-a'] },
+        secondaryReview: { decision: 'REJECTED' },
+      },
+    });
+  });
 });
