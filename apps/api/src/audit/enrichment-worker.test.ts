@@ -66,6 +66,8 @@ describe('EnrichmentWorker', () => {
     const context: AuditEnrichmentContext = {
       tenantId: 'tenant-a',
       auditRunId: 'audit-a',
+      jurisdiction: 'CN_MAINLAND',
+      ruleVersion: '1.0.0',
       decision: 'REVIEW',
       riskLevel: 'HIGH',
       language: 'zh-CN',
@@ -107,6 +109,7 @@ describe('EnrichmentWorker', () => {
 
   it('persists rejected rewrite coverage calculated from loader findings and provider changes', async () => {
     const saved: unknown[] = [];
+    let ruleReviewCalls = 0;
     const job = {
       id: 'rewrite-1',
       tenantId: 'tenant-a',
@@ -136,6 +139,8 @@ describe('EnrichmentWorker', () => {
     const context: AuditEnrichmentContext = {
       tenantId: 'tenant-a',
       auditRunId: 'audit-a',
+      jurisdiction: 'CN_MAINLAND',
+      ruleVersion: '1.0.0',
       decision: 'REVIEW',
       riskLevel: 'HIGH',
       language: 'zh-CN',
@@ -168,14 +173,29 @@ describe('EnrichmentWorker', () => {
       'worker-a',
       undefined,
       { load: async () => context },
+      {
+        review: async () => {
+          ruleReviewCalls += 1;
+          return {
+            status: 'COMPLETED',
+            ruleVersion: '1.0.0',
+            rewrittenFindings: [],
+            residualFindingKeys: [],
+            introducedFindingKeys: [],
+            hasCriticalOrHighFindings: false,
+          };
+        },
+      },
     );
 
     await expect(worker.runOnce()).resolves.toBe(true);
+    expect(ruleReviewCalls).toBe(1);
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({
       status: 'COMPLETED',
       safetyResult: {
         findingCoverage: { unaddressedFindingIds: ['finding-a'] },
+        ruleEngineReview: { status: 'COMPLETED' },
         secondaryReview: { decision: 'REJECTED' },
       },
     });

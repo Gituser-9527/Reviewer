@@ -63,4 +63,26 @@ describe('rewrite secondary review', () => {
       }).decision,
     ).toBe('REJECTED');
   });
+  it('rejects critical or high residual findings and introduced rule risks', () => {
+    const review = {
+      status: 'COMPLETED' as const,
+      ruleVersion: '1.0.0',
+      rewrittenFindings: [],
+      residualFindingKeys: ['rule|DISCRIMINATION|限女性'],
+      introducedFindingKeys: [],
+      hasCriticalOrHighFindings: true,
+    };
+    expect(decideRewriteSafety({ ...base, ruleEngineReview: review }).decision).toBe('REJECTED');
+    expect(
+      decideRewriteSafety({
+        ...base,
+        ruleEngineReview: {
+          ...review,
+          residualFindingKeys: [],
+          introducedFindingKeys: ['rule|FEE_DEPOSIT|押金'],
+          hasCriticalOrHighFindings: false,
+        },
+      }).decision,
+    ).toBe('REJECTED');
+  });
 });

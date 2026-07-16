@@ -10,6 +10,10 @@ import {
   type AuditEnrichmentContext,
 } from './enrichment-context-loader.js';
 import { calculateRewriteFindingCoverage } from './rewrite-finding-coverage.js';
+import {
+  ProductionRewriteRuleEngineAdapter,
+  type RewriteRuleEngineAdapter,
+} from './rewrite-rule-engine-adapter.js';
 import { decideRewriteSafety } from './rewrite-secondary-review.js';
 
 export const enrichmentTypes = ['AUDIT_GENERATE_EXPLANATIONS', 'AUDIT_GENERATE_REWRITE'] as const;
@@ -134,6 +138,7 @@ export class EnrichmentWorker {
     private readonly workerId = process.env.WORKER_ID ?? `enrichment-${process.pid}`,
     private readonly resolver?: RuntimeProviderResolver,
     private readonly contextLoader?: EnrichmentContextLoader,
+    private readonly ruleEngineAdapter?: RewriteRuleEngineAdapter,
   ) {}
   async runOnce(): Promise<boolean> {
     await this.repository.releaseExpiredLocks();
@@ -203,6 +208,11 @@ export class EnrichmentWorker {
           originalJob: context.originalJob,
           rewrite: valid.value,
         });
+        if (!this.ruleEngineAdapter) throw new Error('REWRITE_RULE_ENGINE_UNAVAILABLE');
+        const ruleEngineReview = await this.ruleEngineAdapter.review({
+          context,
+          rewrite: valid.value,
+        });
         const secondaryReview = decideRewriteSafety({
           protectedFactViolations: valid.safety.protectedFactViolations,
           ungroundedFacts: [],
@@ -213,8 +223,14 @@ export class EnrichmentWorker {
           reflection: 'UNAVAILABLE',
           hallucinationDetected: false,
           findingCoverage,
+          ruleEngineReview,
         });
-        safetyResult = { rewriteSafety: valid.safety, findingCoverage, secondaryReview };
+        safetyResult = {
+          rewriteSafety: valid.safety,
+          findingCoverage,
+          ruleEngineReview,
+          secondaryReview,
+        };
       }
       await this.repository.saveEnrichment?.({
         tenantId: job.tenantId,
@@ -305,6 +321,7 @@ async function main(): Promise<void> {
     undefined,
     undefined,
     new PostgresAuditEnrichmentContextLoader(repository.pool),
+    new ProductionRewriteRuleEngineAdapter(),
   );
   const once = process.argv.includes('--once');
   let stopping = false;

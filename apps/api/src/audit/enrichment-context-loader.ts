@@ -27,6 +27,8 @@ export class AuditEnrichmentContextError extends Error {
 export interface AuditEnrichmentContext {
   tenantId: string;
   auditRunId: string;
+  jurisdiction: string;
+  ruleVersion: string;
   decision: string;
   riskLevel: string;
   language: string;
@@ -62,6 +64,8 @@ interface AuditRunRow extends Record<string, unknown> {
   job_posting_id: string;
   decision: string;
   risk_level: string;
+  rule_version: string;
+  result_payload: { context?: { jurisdiction?: unknown } } | null;
 }
 
 interface JobPostingRow extends Record<string, unknown> {
@@ -103,7 +107,7 @@ export class PostgresAuditEnrichmentContextLoader {
 
   async load(input: { tenantId: string; auditRunId: string }): Promise<AuditEnrichmentContext> {
     const auditRun = await this.database.query<AuditRunRow>(
-      `SELECT id, job_posting_id, decision, risk_level
+      `SELECT id, job_posting_id, decision, risk_level, rule_version, result_payload
          FROM audit_runs
         WHERE tenant_id = $1 AND id = $2`,
       [input.tenantId, input.auditRunId],
@@ -164,6 +168,11 @@ export class PostgresAuditEnrichmentContextLoader {
     return {
       tenantId: input.tenantId,
       auditRunId: input.auditRunId,
+      jurisdiction:
+        typeof run.result_payload?.context?.jurisdiction === 'string'
+          ? run.result_payload.context.jurisdiction
+          : 'CN_MAINLAND',
+      ruleVersion: run.rule_version,
       decision: run.decision,
       riskLevel: run.risk_level,
       language: typeof payload.language === 'string' ? payload.language : 'zh-CN',

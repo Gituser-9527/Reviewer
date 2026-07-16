@@ -27,6 +27,13 @@ describe('enrichment query api', () => {
                 unaddressedFindingIds: [],
                 unknownFindingIds: [],
               },
+              ruleEngineReview: {
+                status: 'COMPLETED',
+                ruleVersion: '1.0.0',
+                residualFindingKeys: [],
+                introducedFindingKeys: [],
+                hasCriticalOrHighFindings: false,
+              },
             },
             result: { description: 'safe' },
           },
@@ -40,7 +47,12 @@ describe('enrichment query api', () => {
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      rewrite: { safety_result: { findingCoverage: { addressedFindingIds: ['f1'] } } },
+      rewrite: {
+        safety_result: {
+          findingCoverage: { addressedFindingIds: ['f1'] },
+          ruleEngineReview: { ruleVersion: '1.0.0' },
+        },
+      },
     });
     expect(response.body).not.toContain('prompt');
     expect(response.body).not.toContain('payload');

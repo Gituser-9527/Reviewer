@@ -1,3 +1,5 @@
+import type { RewriteRuleEngineReview } from './rewrite-rule-engine-adapter.js';
+
 export type ReviewStatus = 'PASSED' | 'WARNING' | 'FAILED' | 'UNAVAILABLE';
 export interface RewriteSafetyDecision {
   passed: boolean;
@@ -20,6 +22,7 @@ export function decideRewriteSafety(input: {
   reflection: ReviewStatus;
   hallucinationDetected: boolean;
   findingCoverage?: RewriteFindingCoverage;
+  ruleEngineReview?: RewriteRuleEngineReview;
 }): RewriteSafetyDecision {
   const rejected =
     input.protectedFactViolations.length ||
@@ -30,7 +33,10 @@ export function decideRewriteSafety(input: {
     input.semantic === 'FAILED' ||
     input.reflection === 'FAILED' ||
     (input.findingCoverage?.unaddressedFindingIds.length ?? 0) > 0 ||
-    (input.findingCoverage?.unknownFindingIds.length ?? 0) > 0;
+    (input.findingCoverage?.unknownFindingIds.length ?? 0) > 0 ||
+    (input.ruleEngineReview?.hasCriticalOrHighFindings ?? false) ||
+    (input.ruleEngineReview?.residualFindingKeys.length ?? 0) > 0 ||
+    (input.ruleEngineReview?.introducedFindingKeys.length ?? 0) > 0;
   if (rejected)
     return { passed: false, decision: 'REJECTED', warnings: ['REWRITE_SECONDARY_REVIEW_FAILED'] };
   if (
