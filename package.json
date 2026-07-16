@@ -39,6 +39,7 @@
     "test:audit-routing": "vitest run packages/core/src/orchestrator",
     "test:enrichment-worker": "vitest run apps/api/src/audit",
     "test:async-jobs": "vitest run apps/api/src/audit/enrichment-worker.test.ts",
+    "test:production-enrichment": "vitest run apps/api/src/audit/enrichment-worker.test.ts apps/api/src/audit/rewrite-safety.test.ts apps/api/src/audit/enrichment-api.test.ts apps/api/src/audit/rewrite-secondary-review.test.ts",
     "worker:enrichment": "tsx apps/api/src/audit/enrichment-worker.ts",
     "worker:enrichment:once": "tsx apps/api/src/audit/enrichment-worker.ts --once",
     "test:ui": "vitest run apps/web",

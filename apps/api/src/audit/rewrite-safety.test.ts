@@ -1,0 +1,3 @@
+import { describe,expect,it } from 'vitest';
+import { validateRewriteSafety } from './rewrite-safety.js';
+describe('rewrite safety',()=>{const base={description:'Acme 北京 10000 元',changes:[{findingId:'f1',originalText:'限男性',rewrittenText:'欢迎符合岗位要求的候选人',reason:'移除性别限制'}],preservedFacts:[],warnings:[]};it('accepts a finding-bound rewrite with protected facts',()=>expect(validateRewriteSafety(base,{companyName:'Acme',location:'北京',salary:'10000'},new Set(['f1'])).safety.passed).toBe(true));it('rejects unknown finding references',()=>expect(validateRewriteSafety({...base,changes:[{...base.changes[0],findingId:'unknown'}]},{},new Set(['f1'])).safety.decision).toBe('REJECTED'));});

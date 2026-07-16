@@ -59,3 +59,9 @@ export type LLMRewrite = z.infer<typeof llmRewriteSchema>;
 export type LLMReflection = z.infer<typeof llmReflectionSchema>;
 export type LLMFactExtractionDraft = z.infer<typeof llmFactExtractionDraftSchema>;
 
+/** Enrichment explanation is intentionally constrained to existing audit findings. */
+export const auditExplanationResultSchema = z.object({ auditRunId:z.string(), summary:z.string().max(4000), findings:z.array(z.object({findingId:z.string(),title:z.string(),explanation:z.string(),whyItMatters:z.string(),suggestedAction:z.string(),evidenceRefs:z.array(z.string())})).max(100), limitations:z.array(z.string()).max(20) }).strict();
+export const jobPostingRewriteResultSchema = z.object({ title:z.string().optional(), description:z.string().min(1).max(20000), responsibilities:z.array(z.string()).optional(), requirements:z.array(z.string()).optional(), benefits:z.array(z.string()).optional(), changes:z.array(z.object({findingId:z.string(),originalText:z.string(),rewrittenText:z.string(),reason:z.string()})), preservedFacts:z.array(z.string()), warnings:z.array(z.string()) }).strict();
+export type AuditExplanationResult=z.infer<typeof auditExplanationResultSchema>;
+export type JobPostingRewriteResult=z.infer<typeof jobPostingRewriteResultSchema>;
+

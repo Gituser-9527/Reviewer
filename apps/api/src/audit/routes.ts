@@ -67,7 +67,7 @@ export interface AuditRoutesDependencies {
   /** Optional incident response service used to apply emergency runtime switches. */
   incidentResponseService?: IncidentResponseService;
   /** PostgreSQL observability persistence; failures never change the core audit decision. */
-  observabilityRepository?: Pick<PostgresLLMPersistenceRepository, 'saveTrace' | 'findTrace' | 'listUsage' | 'enqueue'>;
+  observabilityRepository?: Pick<PostgresLLMPersistenceRepository, 'saveTrace' | 'findTrace' | 'listUsage' | 'enqueue' | 'listEnrichment'>;
 }
 
 const knowledgeDirectory = fileURLToPath(new URL('../../../../knowledge/', import.meta.url));
@@ -278,5 +278,13 @@ export function registerAuditRoutes(
   app.get('/api/audit/runs/:id/llm-usage', async (request, reply) => {
     const params=auditRunParamsSchema.parse(request.params); const query=auditRunGetQuerySchema.parse(request.query); if(!query.tenantId || !dependencies.observabilityRepository)return reply.code(400).send({error:{code:'USAGE_QUERY_UNAVAILABLE',message:'tenantId and persistent observability are required.',retryable:false}});
     dependencies.authServices?.authService.requirePermission(request,'audit:read'); dependencies.authServices?.authService.requireTenantAccess(request,query.tenantId); return reply.send({items:await dependencies.observabilityRepository.listUsage(query.tenantId,params.id)});
+  });
+  app.get('/api/audit/runs/:id/enrichment', async (request, reply) => {
+    const params=auditRunParamsSchema.parse(request.params); const query=auditRunGetQuerySchema.parse(request.query);
+    if(!query.tenantId || !dependencies.observabilityRepository)return reply.code(400).send({error:{code:'ENRICHMENT_QUERY_UNAVAILABLE',message:'tenantId and persistent observability are required.',retryable:false}});
+    dependencies.authServices?.authService.requirePermission(request,'audit:read'); dependencies.authServices?.authService.requireTenantAccess(request,query.tenantId);
+    const rows=await dependencies.observabilityRepository.listEnrichment(query.tenantId,params.id);
+    const byType=Object.fromEntries(rows.map(row=>[String(row.task_type),row]));
+    return reply.send({explanation:byType.AUDIT_GENERATE_EXPLANATIONS??null,rewrite:byType.AUDIT_GENERATE_REWRITE??null});
   });
 }
