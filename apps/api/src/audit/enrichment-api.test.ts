@@ -41,6 +41,14 @@ describe('enrichment query api', () => {
                 risks: [],
                 isMock: false,
               },
+              reflectionReview: {
+                status: 'UNAVAILABLE',
+                reasonCodes: ['REFLECTION_NOT_CONFIGURED'],
+                summary: 'not configured',
+                conflicts: [],
+                unresolvedIssues: [],
+                isMock: false,
+              },
             },
             result: { description: 'safe' },
           },
@@ -59,6 +67,7 @@ describe('enrichment query api', () => {
           findingCoverage: { addressedFindingIds: ['f1'] },
           ruleEngineReview: { ruleVersion: '1.0.0' },
           semanticReview: { status: 'UNAVAILABLE' },
+          reflectionReview: { status: 'UNAVAILABLE' },
         },
       },
     });

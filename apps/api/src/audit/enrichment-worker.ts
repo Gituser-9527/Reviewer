@@ -16,6 +16,7 @@ import {
 } from './rewrite-rule-engine-adapter.js';
 import { decideRewriteSafety } from './rewrite-secondary-review.js';
 import { RewriteSemanticClassifierAdapter } from './rewrite-semantic-classifier-adapter.js';
+import { RewriteReflectionAdapter } from './rewrite-reflection-adapter.js';
 
 export const enrichmentTypes = ['AUDIT_GENERATE_EXPLANATIONS', 'AUDIT_GENERATE_REWRITE'] as const;
 export type EnrichmentType = (typeof enrichmentTypes)[number];
@@ -141,6 +142,7 @@ export class EnrichmentWorker {
     private readonly contextLoader?: EnrichmentContextLoader,
     private readonly ruleEngineAdapter?: RewriteRuleEngineAdapter,
     private readonly semanticClassifierAdapter?: RewriteSemanticClassifierAdapter,
+    private readonly reflectionAdapter?: RewriteReflectionAdapter,
   ) {}
   async runOnce(): Promise<boolean> {
     await this.repository.releaseExpiredLocks();
@@ -224,6 +226,16 @@ export class EnrichmentWorker {
           rewriteSafety: valid.safety,
           ruleEngineReview,
         });
+        const reflectionReview = await (
+          this.reflectionAdapter ?? new RewriteReflectionAdapter()
+        ).review({
+          context,
+          rewrite: valid.value,
+          findingCoverage,
+          rewriteSafety: valid.safety,
+          ruleEngineReview,
+          semanticReview,
+        });
         const secondaryReview = decideRewriteSafety({
           protectedFactViolations: valid.safety.protectedFactViolations,
           ungroundedFacts: [],
@@ -231,7 +243,7 @@ export class EnrichmentWorker {
           highRiskRemaining: false,
           newHighRisk: false,
           semantic: semanticReview.status,
-          reflection: 'UNAVAILABLE',
+          reflection: reflectionReview.status,
           hallucinationDetected: false,
           findingCoverage,
           ruleEngineReview,
@@ -241,6 +253,7 @@ export class EnrichmentWorker {
           findingCoverage,
           ruleEngineReview,
           semanticReview,
+          reflectionReview,
           secondaryReview,
         };
       }
@@ -335,6 +348,7 @@ async function main(): Promise<void> {
     new PostgresAuditEnrichmentContextLoader(repository.pool),
     new ProductionRewriteRuleEngineAdapter(),
     new RewriteSemanticClassifierAdapter(),
+    new RewriteReflectionAdapter(),
   );
   const once = process.argv.includes('--once');
   let stopping = false;
