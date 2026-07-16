@@ -22,6 +22,7 @@ import type { PerformanceServices } from '../performance/service.js';
 import type { HumanReviewStore } from '../reviews/store.js';
 import { FileRuleManagementStore } from '../rules/store.js';
 import type { RuntimeServices, RuntimeSelection } from '../runtime/services.js';
+import type { PostgresLLMPersistenceRepository } from '@job-compliance/database';
 
 /** Function signature used to invoke the core audit orchestrator. */
 export type AuditJobHandler = (
@@ -65,6 +66,8 @@ export interface AuditRoutesDependencies {
   performanceServices?: PerformanceServices;
   /** Optional incident response service used to apply emergency runtime switches. */
   incidentResponseService?: IncidentResponseService;
+  /** PostgreSQL observability persistence; failures never change the core audit decision. */
+  observabilityRepository?: Pick<PostgresLLMPersistenceRepository, 'saveTrace' | 'findTrace' | 'listUsage' | 'enqueue'>;
 }
 
 const knowledgeDirectory = fileURLToPath(new URL('../../../../knowledge/', import.meta.url));
@@ -182,6 +185,16 @@ export function registerAuditRoutes(
         tenantId: body.tenantId,
         jobPosting: input,
       });
+      const trace = (finalResult as AuditResult & { routingTrace?: Record<string, unknown> }).routingTrace;
+      if (dependencies.observabilityRepository !== undefined) {
+        try {
+          await dependencies.observabilityRepository.saveTrace(body.tenantId, finalResult.auditId, trace ?? {
+            routingPolicyVersion: 'unconfigured', ruleVersion: 'runtime-selected', lawKbVersion: 'runtime-selected',
+            usedLLM: false, usedDeepReview: false, cacheHit: false, coreAuditDurationMs: Date.now() - startedAt, stages: [],
+          });
+          await Promise.all(['AUDIT_GENERATE_EXPLANATIONS', 'AUDIT_GENERATE_REWRITE'].map((type) => dependencies.observabilityRepository!.enqueue({ tenantId: body.tenantId, type, auditRunId: finalResult.auditId, payload: { tenantId: body.tenantId, auditRunId: finalResult.auditId, jobType: type, promptVersion: 'enrichment-v1', idempotencyKey: `${finalResult.auditId}:${type}:enrichment-v1` }, idempotencyKey: `${finalResult.auditId}:${type}:enrichment-v1` })));
+        } catch { request.log.warn({ auditId: finalResult.auditId, code: 'TRACE_PERSISTENCE_WARNING' }, 'Audit observability persistence failed'); }
+      }
       dependencies.betaTrialService?.recordAgentRun(finalResult);
       if (finalResult.decision === 'MANUAL_REVIEW') {
         await dependencies.reviewStore?.createFromAuditResult(finalResult, input);
@@ -253,5 +266,17 @@ export function registerAuditRoutes(
       });
     }
     return reply.send(result);
+  });
+
+  app.get('/api/audit/runs/:id/routing-trace', async (request, reply) => {
+    const params = auditRunParamsSchema.parse(request.params); const query = auditRunGetQuerySchema.parse(request.query);
+    if (!query.tenantId || !dependencies.observabilityRepository) return reply.code(400).send({ error: { code:'TRACE_QUERY_UNAVAILABLE', message:'tenantId and persistent observability are required.', retryable:false } });
+    dependencies.authServices?.authService.requirePermission(request, 'audit:read'); dependencies.authServices?.authService.requireTenantAccess(request, query.tenantId);
+    const trace=await dependencies.observabilityRepository.findTrace(query.tenantId,params.id); if(!trace)return reply.code(404).send({error:{code:'ROUTING_TRACE_NOT_FOUND',message:'Routing trace was not found.',retryable:false}});
+    const role=dependencies.authServices?.authService.getContext(request).role; return reply.send(role === 'TENANT_ADMIN' ? trace : { routingPolicyVersion:trace.routingPolicyVersion, usedLLM:trace.usedLLM, usedDeepReview:trace.usedDeepReview, fallbackReason:trace.fallbackReason, coreAuditDurationMs:trace.coreAuditDurationMs });
+  });
+  app.get('/api/audit/runs/:id/llm-usage', async (request, reply) => {
+    const params=auditRunParamsSchema.parse(request.params); const query=auditRunGetQuerySchema.parse(request.query); if(!query.tenantId || !dependencies.observabilityRepository)return reply.code(400).send({error:{code:'USAGE_QUERY_UNAVAILABLE',message:'tenantId and persistent observability are required.',retryable:false}});
+    dependencies.authServices?.authService.requirePermission(request,'audit:read'); dependencies.authServices?.authService.requireTenantAccess(request,query.tenantId); return reply.send({items:await dependencies.observabilityRepository.listUsage(query.tenantId,params.id)});
   });
 }

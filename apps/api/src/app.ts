@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { PostgresAuditRunRepository, PostgresEvalRepository } from '@job-compliance/database';
+import { PostgresAuditRunRepository, PostgresEvalRepository, PostgresLLMPersistenceRepository } from '@job-compliance/database';
 import type { HealthResponse } from '@job-compliance/shared';
 import { ZodError } from 'zod';
 import { DatabaseAuditRunStore } from './audit/database-store.js';
@@ -49,7 +49,7 @@ import { registerUatRoutes } from './uat/routes.js';
 import { UatAcceptanceService } from './uat/service.js';
 import { SecretEncryptionService } from '@job-compliance/core';
 import { registerSettingsRoutes } from './settings/routes.js';
-import { LLMSettingsService } from './settings/service.js';
+import { LLMSettingsService, PostgresLLMSettingsService, type SettingsServicePort } from './settings/service.js';
 
 const serviceName = 'job-compliance-api';
 
@@ -112,7 +112,7 @@ export interface BuildAppOptions {
   /** Optional UAT acceptance service used by tests or future persistence adapters. */
   uatAcceptanceService?: UatAcceptanceService;
   /** Tenant BYOK configuration service. */
-  llmSettingsService?: LLMSettingsService;
+  llmSettingsService?: SettingsServicePort;
 }
 
 interface DefaultStores {
@@ -214,9 +214,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       evalStore,
       runtimeServices,
     });
-  const llmSettingsService = options.llmSettingsService ?? new LLMSettingsService(
-    process.env.LLM_SECRET_ENCRYPTION_KEY ? SecretEncryptionService.fromEnv() : undefined,
-  );
+  const persistenceRepository = process.env.DATABASE_URL?.trim() ? new PostgresLLMPersistenceRepository(process.env.DATABASE_URL) : undefined;
+  const llmSettingsService = options.llmSettingsService ?? (() => {
+    if (process.env.DATABASE_URL?.trim()) {
+      if (!process.env.LLM_SECRET_ENCRYPTION_KEY) throw new Error('LLM_SECRET_ENCRYPTION_KEY is required when DATABASE_URL is configured.');
+      return new PostgresLLMSettingsService(persistenceRepository!, SecretEncryptionService.fromEnv());
+    }
+    return new LLMSettingsService(process.env.LLM_SECRET_ENCRYPTION_KEY ? SecretEncryptionService.fromEnv() : undefined);
+  })();
 
   registerOperationalLogging(app);
 
@@ -331,6 +336,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     productService,
     performanceServices,
     incidentResponseService,
+    ...(persistenceRepository === undefined ? {} : { observabilityRepository: persistenceRepository }),
     ...(options.auditJob === undefined ? {} : { auditJob: options.auditJob }),
   });
 
