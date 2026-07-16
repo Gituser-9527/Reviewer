@@ -5,7 +5,10 @@ import {
   validateExplanationRuntime,
   validateRewriteRuntime,
 } from './enrichment-runtime-validation.js';
-import type { AuditEnrichmentContext } from './enrichment-context-loader.js';
+import {
+  PostgresAuditEnrichmentContextLoader,
+  type AuditEnrichmentContext,
+} from './enrichment-context-loader.js';
 
 export const enrichmentTypes = ['AUDIT_GENERATE_EXPLANATIONS', 'AUDIT_GENERATE_REWRITE'] as const;
 export type EnrichmentType = (typeof enrichmentTypes)[number];
@@ -271,7 +274,13 @@ export class EnrichmentWorker {
 
 async function main(): Promise<void> {
   const repository = new PostgresLLMPersistenceRepository();
-  const worker = new EnrichmentWorker(repository);
+  const worker = new EnrichmentWorker(
+    repository,
+    undefined,
+    undefined,
+    undefined,
+    new PostgresAuditEnrichmentContextLoader(repository.pool),
+  );
   const once = process.argv.includes('--once');
   let stopping = false;
   process.on('SIGINT', () => {

@@ -1,10 +1,107 @@
 import { describe, expect, it } from 'vitest';
 import { EnrichmentWorker, MockEnrichmentProvider } from './enrichment-worker.js';
+import type { AuditEnrichmentContext } from './enrichment-context-loader.js';
 
 describe('EnrichmentWorker', () => {
   it('completes a mock explanation and records mock usage', async () => {
-    const events:string[]=[]; const job={id:'j1',tenantId:'tenant-a',type:'AUDIT_GENERATE_EXPLANATIONS',status:'RUNNING',auditRunId:'audit-a',attemptCount:1,maxAttempts:3,payload:{tenantId:'tenant-a',auditRunId:'audit-a',jobType:'AUDIT_GENERATE_EXPLANATIONS',promptVersion:'v1',idempotencyKey:'audit-a:explanation:v1'}};
-    const worker=new EnrichmentWorker({releaseExpiredLocks:async()=>0,claimNext:async()=>job,completeJob:async()=>{events.push('complete');},retryJob:async()=>{events.push('retry');},deadLetter:async()=>{events.push('dead');},createUsage:async input=>{expect(input.isMock).toBe(true);events.push('usage');}},new MockEnrichmentProvider());
-    expect(await worker.runOnce()).toBe(true); expect(events).toEqual(['complete','usage']);
+    const events: string[] = [];
+    const job = {
+      id: 'j1',
+      tenantId: 'tenant-a',
+      type: 'AUDIT_GENERATE_EXPLANATIONS',
+      status: 'RUNNING',
+      auditRunId: 'audit-a',
+      attemptCount: 1,
+      maxAttempts: 3,
+      payload: {
+        tenantId: 'tenant-a',
+        auditRunId: 'audit-a',
+        jobType: 'AUDIT_GENERATE_EXPLANATIONS',
+        promptVersion: 'v1',
+        idempotencyKey: 'audit-a:explanation:v1',
+      },
+    };
+    const worker = new EnrichmentWorker(
+      {
+        releaseExpiredLocks: async () => 0,
+        claimNext: async () => job,
+        completeJob: async () => {
+          events.push('complete');
+        },
+        retryJob: async () => {
+          events.push('retry');
+        },
+        deadLetter: async () => {
+          events.push('dead');
+        },
+        createUsage: async (input) => {
+          expect(input.isMock).toBe(true);
+          events.push('usage');
+        },
+      },
+      new MockEnrichmentProvider(),
+    );
+    expect(await worker.runOnce()).toBe(true);
+    expect(events).toEqual(['complete', 'usage']);
+  });
+
+  it('loads persisted context through the injected loader instead of job payload content', async () => {
+    const loaded: Array<{ tenantId: string; auditRunId: string }> = [];
+    const job = {
+      id: 'j2',
+      tenantId: 'tenant-a',
+      type: 'AUDIT_GENERATE_EXPLANATIONS',
+      status: 'RUNNING',
+      auditRunId: 'audit-a',
+      attemptCount: 1,
+      maxAttempts: 3,
+      payload: {
+        tenantId: 'tenant-a',
+        auditRunId: 'audit-a',
+        jobType: 'AUDIT_GENERATE_EXPLANATIONS',
+        promptVersion: 'v1',
+        idempotencyKey: 'audit-a:explanation:v1',
+      },
+    };
+    const context: AuditEnrichmentContext = {
+      tenantId: 'tenant-a',
+      auditRunId: 'audit-a',
+      decision: 'REVIEW',
+      riskLevel: 'HIGH',
+      language: 'zh-CN',
+      originalJob: { description: '仅限男性' },
+      findings: [
+        {
+          id: 'finding-a',
+          category: 'DISCRIMINATION',
+          severity: 'HIGH',
+          title: '性别限制',
+          evidenceIds: [],
+        },
+      ],
+      evidence: [],
+    };
+    const worker = new EnrichmentWorker(
+      {
+        releaseExpiredLocks: async () => 0,
+        claimNext: async () => job,
+        completeJob: async () => undefined,
+        retryJob: async () => undefined,
+        deadLetter: async () => undefined,
+        createUsage: async () => undefined,
+      },
+      new MockEnrichmentProvider(),
+      'worker-a',
+      undefined,
+      {
+        load: async (input) => {
+          loaded.push(input);
+          return context;
+        },
+      },
+    );
+
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(loaded).toEqual([{ tenantId: 'tenant-a', auditRunId: 'audit-a' }]);
   });
 });
