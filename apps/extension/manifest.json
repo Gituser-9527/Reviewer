@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Job Compliance Capture",
+  "version": "0.1.0",
+  "description": "User-triggered job-posting capture and compliance audit preview.",
+  "action": { "default_popup": "popup.html", "default_title": "提取当前岗位" },
+  "background": { "service_worker": "dist/background.js", "type": "module" },
+  "permissions": ["activeTab", "storage", "tabs"],
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["dist/content.js"], "run_at": "document_idle" }]
+}

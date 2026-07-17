@@ -1,0 +1,3 @@
+import { describe, expect, it } from 'vitest';
+import { selectSourceTab } from './source-tab.js';
+describe('source tab selection',()=>{it('prefers an active ordinary page and excludes extension/internal pages',()=>{expect(selectSourceTab([{id:1,url:'chrome-extension://id/popup.html',active:true},{id:2,url:'https://fixture.test/job',lastAccessed:2}])?.id).toBe(2);expect(selectSourceTab([{id:3,url:'https://job.test',active:true},{id:2,url:'https://old.test'}])?.id).toBe(3);});it('returns no source when only internal pages exist',()=>expect(selectSourceTab([{id:1,url:'chrome://settings'},{id:2,url:'chrome-extension://other/popup.html'}])).toBeUndefined());});
