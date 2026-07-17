@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -36,6 +37,7 @@ describe('launch security compliance routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_security'),
       payload: sensitiveAuditRequest,
     });
     expect(auditResponse.statusCode).toBe(201);
@@ -45,6 +47,7 @@ describe('launch security compliance routes', () => {
     const retentionResponse = await app.inject({
       method: 'POST',
       url: '/api/security/data-retention/jobs',
+      headers: superAdminIdentity(),
       payload: {
         tenantId: 'tenant_security',
         resourceType: 'audit_runs',
@@ -63,6 +66,7 @@ describe('launch security compliance routes', () => {
     const reportResponse = await app.inject({
       method: 'GET',
       url: '/api/security/launch-check/report',
+      headers: superAdminIdentity(),
     });
     expect(reportResponse.statusCode).toBe(200);
     const report = reportResponse.json<{
@@ -84,6 +88,7 @@ describe('launch security compliance routes', () => {
     const exportResponse = await app.inject({
       method: 'POST',
       url: '/api/security/privacy-export-requests',
+      headers: superAdminIdentity(),
       payload: {
         tenantId: 'tenant_security',
       },
@@ -99,6 +104,7 @@ describe('launch security compliance routes', () => {
     const deletionCreateResponse = await app.inject({
       method: 'POST',
       url: '/api/security/data-deletion-requests',
+      headers: superAdminIdentity(),
       payload: {
         tenantId: 'tenant_security',
         targetType: 'tenant',
@@ -112,6 +118,7 @@ describe('launch security compliance routes', () => {
     const deletionExecuteResponse = await app.inject({
       method: 'POST',
       url: `/api/security/data-deletion-requests/${deletion.id}/execute`,
+      headers: superAdminIdentity(),
     });
     expect(deletionExecuteResponse.statusCode).toBe(200);
     expect(deletionExecuteResponse.json()).toMatchObject({
@@ -124,6 +131,7 @@ describe('launch security compliance routes', () => {
     const listAuditRunsResponse = await app.inject({
       method: 'GET',
       url: '/api/audit/runs?tenantId=tenant_security',
+      headers: auditOperatorIdentity('tenant_security'),
     });
     expect(listAuditRunsResponse.statusCode).toBe(200);
     expect(listAuditRunsResponse.json()).toEqual({ items: [] });
@@ -136,11 +144,7 @@ describe('launch security compliance routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/security/launch-check/report',
-      headers: {
-        'x-user-id': 'viewer_001',
-        'x-user-role': 'VIEWER',
-        'x-tenant-id': 'tenant_security',
-      },
+      headers: auditOperatorIdentity('tenant_security'),
     });
 
     expect(response.statusCode).toBe(403);

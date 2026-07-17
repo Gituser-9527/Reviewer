@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult, JobPostingInput } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { superAdminIdentity } from '../test-helpers/auth.js';
 import type { AuditJobRequest } from '../audit/schemas.js';
 import type { RuntimeSelection } from '../runtime/services.js';
 import { signWebhookPayload, verifyWebhookSignature } from './service.js';
@@ -56,6 +57,7 @@ async function createTenantAndKey(app: ReturnType<typeof buildApp>) {
   const keyResponse = await app.inject({
     method: 'POST',
     url: '/api/product/tenants/tenant_v1/api-keys',
+    headers: superAdminIdentity(),
     payload: { name: 'V1 key' },
   });
   return keyResponse.json<{ apiKey: string }>().apiKey;

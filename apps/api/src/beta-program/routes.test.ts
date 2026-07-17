@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
+import { superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -11,11 +12,13 @@ describe('Beta program API routes', () => {
   it('creates a controlled Beta program and manages participants, mode, feedback, reports and checks', async () => {
     const reportDate = new Date().toISOString().slice(0, 10);
     const app = buildApp();
+    const headers = superAdminIdentity();
     apps.push(app);
 
     const createResponse = await app.inject({
       method: 'POST',
       url: '/api/beta-programs',
+      headers,
       payload: {
         tenantId: 'tenant_beta_001',
         name: '内部招聘合规审核 Beta',
@@ -35,6 +38,7 @@ describe('Beta program API routes', () => {
     const participantResponse = await app.inject({
       method: 'POST',
       url: `/api/beta-programs/${program.id}/participants`,
+      headers,
       payload: {
         userId: 'reviewer_001',
         displayName: '审核员 A',
@@ -47,6 +51,7 @@ describe('Beta program API routes', () => {
     const modeResponse = await app.inject({
       method: 'PATCH',
       url: `/api/beta-programs/${program.id}/mode`,
+      headers,
       payload: {
         mode: 'assist',
       },
@@ -57,6 +62,7 @@ describe('Beta program API routes', () => {
     const feedbackResponse = await app.inject({
       method: 'POST',
       url: `/api/beta-programs/${program.id}/feedback`,
+      headers,
       payload: {
         reporterId: 'reviewer_001',
         feedbackType: 'bad_evidence',
@@ -71,6 +77,7 @@ describe('Beta program API routes', () => {
     const dailyReportResponse = await app.inject({
       method: 'POST',
       url: `/api/beta-programs/${program.id}/daily-reports`,
+      headers,
       payload: {
         reportDate,
         auditsReviewed: 12,
@@ -90,6 +97,7 @@ describe('Beta program API routes', () => {
     const overviewResponse = await app.inject({
       method: 'GET',
       url: `/api/beta-programs/${program.id}`,
+      headers,
     });
     const overview = overviewResponse.json<{
       participants: unknown[];
@@ -111,6 +119,7 @@ describe('Beta program API routes', () => {
     const checkResponse = await app.inject({
       method: 'PATCH',
       url: `/api/beta-programs/${program.id}/go-no-go/${check?.id}`,
+      headers,
       payload: {
         status: 'pass',
         evidence: '已完成确认。',
@@ -122,6 +131,7 @@ describe('Beta program API routes', () => {
     const feedbackListResponse = await app.inject({
       method: 'GET',
       url: `/api/beta-feedback?tenantId=tenant_beta_001&programId=${program.id}`,
+      headers,
     });
     expect(feedbackListResponse.statusCode).toBe(200);
     expect(feedbackListResponse.json<{ items: unknown[] }>().items).toHaveLength(1);

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 import { createRuntimeServices, type RuntimeSelection } from './services.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
@@ -95,13 +96,14 @@ describe('runtime monitoring and rollout routes', () => {
     });
     apps.push(app);
 
-    const configsResponse = await app.inject({ method: 'GET', url: '/api/runtime-configs' });
+    const configsResponse = await app.inject({ method: 'GET', url: '/api/runtime-configs', headers: superAdminIdentity() });
     expect(configsResponse.statusCode).toBe(200);
     expect(configsResponse.json<{ items: unknown[] }>().items).toHaveLength(3);
 
     const rolloutResponse = await app.inject({
       method: 'POST',
       url: '/api/rollouts',
+      headers: superAdminIdentity(),
       payload: {
         target: 'ruleVersion',
         stableVersion: '1.0.0',
@@ -117,6 +119,7 @@ describe('runtime monitoring and rollout routes', () => {
     const canaryAuditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_canary'),
       payload: auditRequest('tenant_canary'),
     });
     const canaryAudit = canaryAuditResponse.json<AuditResult>();
@@ -128,6 +131,7 @@ describe('runtime monitoring and rollout routes', () => {
     const stableAuditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_stable'),
       payload: auditRequest('tenant_stable'),
     });
     const stableAudit = stableAuditResponse.json<AuditResult>();
@@ -135,7 +139,7 @@ describe('runtime monitoring and rollout routes', () => {
     expect(stableAudit.context.ruleVersion).toBe('1.0.0');
     expect(stableAudit.decision).toBe('PASS');
 
-    const metricsResponse = await app.inject({ method: 'GET', url: '/api/metrics/audit' });
+    const metricsResponse = await app.inject({ method: 'GET', url: '/api/metrics/audit', headers: superAdminIdentity() });
     expect(metricsResponse.statusCode).toBe(200);
     expect(metricsResponse.json()).toMatchObject({
       audit_total: 2,
@@ -147,7 +151,7 @@ describe('runtime monitoring and rollout routes', () => {
       },
     });
 
-    const alertsResponse = await app.inject({ method: 'GET', url: '/api/alerts' });
+    const alertsResponse = await app.inject({ method: 'GET', url: '/api/alerts', headers: superAdminIdentity() });
     expect(alertsResponse.statusCode).toBe(200);
     expect(alertsResponse.json<{ items: Array<{ metricKey: string }> }>().items).toEqual(
       expect.arrayContaining([expect.objectContaining({ metricKey: 'reject_rate' })]),
@@ -156,6 +160,7 @@ describe('runtime monitoring and rollout routes', () => {
     const rollbackResponse = await app.inject({
       method: 'POST',
       url: `/api/rollouts/${rollout.id}/rollback`,
+      headers: superAdminIdentity(),
     });
     expect(rollbackResponse.statusCode).toBe(200);
     expect(rollbackResponse.json()).toMatchObject({ status: 'rolled_back' });
@@ -163,6 +168,7 @@ describe('runtime monitoring and rollout routes', () => {
     const postRollbackAuditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_canary'),
       payload: auditRequest('tenant_canary'),
     });
     expect(postRollbackAuditResponse.statusCode).toBe(201);

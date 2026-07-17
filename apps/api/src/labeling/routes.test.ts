@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, reviewerIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -93,11 +94,12 @@ describe('review labeling routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_labeling'),
       payload: auditRequest,
     });
     expect(auditResponse.statusCode).toBe(201);
 
-    const referenceResponse = await app.inject({ method: 'GET', url: '/api/labeling/reference' });
+    const referenceResponse = await app.inject({ method: 'GET', url: '/api/labeling/reference', headers: reviewerIdentity('tenant_labeling') });
     expect(referenceResponse.statusCode).toBe(200);
     expect(referenceResponse.json()).toMatchObject({
       riskLevels: expect.arrayContaining([expect.objectContaining({ level: 'CRITICAL' })]),
@@ -107,6 +109,7 @@ describe('review labeling routes', () => {
     const firstLabelResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_labeling_001/reviewer-decisions',
+      headers: reviewerIdentity('tenant_labeling'),
       payload: {
         reviewerId: 'reviewer_a',
         finalDecision: 'REQUEST_REVISION',
@@ -122,6 +125,7 @@ describe('review labeling routes', () => {
     const secondLabelResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_labeling_001/reviewer-decisions',
+      headers: reviewerIdentity('tenant_labeling'),
       payload: {
         reviewerId: 'reviewer_b',
         finalDecision: 'REQUEST_REVISION',
@@ -134,7 +138,7 @@ describe('review labeling routes', () => {
     });
     expect(secondLabelResponse.statusCode).toBe(201);
 
-    const statsResponse = await app.inject({ method: 'GET', url: '/api/reviewer-agreement-stats' });
+    const statsResponse = await app.inject({ method: 'GET', url: '/api/reviewer-agreement-stats', headers: reviewerIdentity('tenant_labeling') });
     expect(statsResponse.statusCode).toBe(200);
     expect(statsResponse.json<{ items: Array<{ agreementRate: number }> }>().items).toEqual(
       expect.arrayContaining([expect.objectContaining({ agreementRate: 1 })]),
@@ -143,6 +147,7 @@ describe('review labeling routes', () => {
     const changedLabelResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_labeling_001/reviewer-decisions',
+      headers: reviewerIdentity('tenant_labeling'),
       payload: {
         reviewerId: 'reviewer_b',
         finalDecision: 'APPROVE',
@@ -155,7 +160,7 @@ describe('review labeling routes', () => {
     });
     expect(changedLabelResponse.statusCode).toBe(201);
 
-    const disputesResponse = await app.inject({ method: 'GET', url: '/api/disputed-cases' });
+    const disputesResponse = await app.inject({ method: 'GET', url: '/api/disputed-cases', headers: reviewerIdentity('tenant_labeling') });
     expect(disputesResponse.statusCode).toBe(200);
     const disputes = disputesResponse.json<{ items: Array<{ id: string; status: string }> }>().items;
     expect(disputes).toHaveLength(1);
@@ -164,6 +169,7 @@ describe('review labeling routes', () => {
     const addToEvalBlockedResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_labeling_001/add-to-eval',
+      headers: superAdminIdentity(),
       payload: {
         datasetId: 'labeling_eval',
       },
@@ -178,6 +184,7 @@ describe('review labeling routes', () => {
     const resolveResponse = await app.inject({
       method: 'POST',
       url: `/api/disputed-cases/${disputeId}/resolve`,
+      headers: reviewerIdentity('tenant_labeling'),
       payload: {
         resolvedBy: 'senior_reviewer',
         finalDecision: 'REQUEST_REVISION',
@@ -196,6 +203,7 @@ describe('review labeling routes', () => {
     const addToEvalResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_labeling_001/add-to-eval',
+      headers: superAdminIdentity(),
       payload: {
         datasetId: 'labeling_eval',
       },

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { EvalRunReport } from '@job-compliance/core';
 import { buildApp } from '../app.js';
+import { superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -16,6 +17,7 @@ describe('eval API routes', () => {
     const datasetResponse = await app.inject({
       method: 'POST',
       url: '/api/evals/datasets',
+      headers: superAdminIdentity(),
       payload: {
         id: 'dataset_api_test',
         name: 'API Eval Dataset',
@@ -58,6 +60,7 @@ describe('eval API routes', () => {
     const importResponse = await app.inject({
       method: 'POST',
       url: '/api/evals/datasets/dataset_api_test/cases',
+      headers: superAdminIdentity(),
       payload: { jsonl },
     });
     expect(importResponse.statusCode).toBe(201);
@@ -66,6 +69,7 @@ describe('eval API routes', () => {
     const listCasesResponse = await app.inject({
       method: 'GET',
       url: '/api/evals/datasets/dataset_api_test/cases',
+      headers: superAdminIdentity(),
     });
     expect(listCasesResponse.statusCode).toBe(200);
     expect(listCasesResponse.json<{ items: unknown[] }>().items).toHaveLength(2);
@@ -73,6 +77,7 @@ describe('eval API routes', () => {
     const runResponse = await app.inject({
       method: 'POST',
       url: '/api/evals/run',
+      headers: superAdminIdentity(),
       payload: {
         datasetId: 'dataset_api_test',
         ruleVersion: '1.0.0',
@@ -95,6 +100,7 @@ describe('eval API routes', () => {
     const getRunResponse = await app.inject({
       method: 'GET',
       url: `/api/evals/runs/${report.id}`,
+      headers: superAdminIdentity(),
     });
     expect(getRunResponse.statusCode).toBe(200);
     expect(getRunResponse.json()).toEqual(report);
@@ -102,6 +108,7 @@ describe('eval API routes', () => {
     const failuresResponse = await app.inject({
       method: 'GET',
       url: `/api/evals/runs/${report.id}/failures`,
+      headers: superAdminIdentity(),
     });
     expect(failuresResponse.statusCode).toBe(200);
     expect(failuresResponse.json()).toMatchObject({

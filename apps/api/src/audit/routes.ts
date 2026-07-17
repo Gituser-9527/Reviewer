@@ -129,7 +129,6 @@ export function registerAuditRoutes(
   app.post('/api/audit/job', async (request, reply) => {
     const startedAt = Date.now();
     try {
-      dependencies.authServices?.authService.requirePermission(request, 'audit:write');
       const body = auditJobRequestSchema.parse(request.body);
       const apiKey = dependencies.productService?.extractApiKey(
         request.headers as Record<string, unknown>,
@@ -137,6 +136,7 @@ export function registerAuditRoutes(
       const apiKeyContext =
         apiKey === undefined ? undefined : dependencies.productService?.authenticateApiKey(apiKey);
       if (apiKeyContext === undefined) {
+        dependencies.authServices?.authService.requirePermission(request, 'audit:write');
         dependencies.authServices?.authService.requireTenantAccess(request, body.tenantId);
       } else {
         if (apiKeyContext.tenantId !== body.tenantId) {

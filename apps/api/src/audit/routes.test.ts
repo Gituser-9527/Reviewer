@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult, HumanReviewTicket } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, auditReaderIdentity, reviewerIdentity, complianceManagerIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -89,6 +90,7 @@ describe('audit API routes', () => {
     const createResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity(),
       payload: validRequest,
     });
     const created = createResponse.json<AuditResult>();
@@ -105,6 +107,7 @@ describe('audit API routes', () => {
     const getResponse = await app.inject({
       method: 'GET',
       url: `/api/audit/runs/${created.auditId}`,
+      headers: auditOperatorIdentity(),
     });
 
     expect(getResponse.statusCode).toBe(200);
@@ -113,6 +116,7 @@ describe('audit API routes', () => {
     const listResponse = await app.inject({
       method: 'GET',
       url: '/api/audit/runs?tenantId=tenant_001',
+      headers: auditReaderIdentity(),
     });
 
     expect(listResponse.statusCode).toBe(200);
@@ -126,6 +130,7 @@ describe('audit API routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity(),
       payload: {
         ...validRequest,
         job: {
@@ -148,6 +153,23 @@ describe('audit API routes', () => {
     );
   });
 
+  it('distinguishes missing credentials, missing write permission, and tenant scope', async () => {
+    const app = buildApp();
+    apps.push(app);
+
+    const unauthenticated = await app.inject({ method: 'POST', url: '/api/audit/job', payload: validRequest });
+    expect(unauthenticated.statusCode).toBe(401);
+    expect(unauthenticated.json()).toMatchObject({ error: { code: 'AUTHENTICATION_REQUIRED' } });
+
+    const readOnly = await app.inject({ method: 'POST', url: '/api/audit/job', headers: auditReaderIdentity(), payload: validRequest });
+    expect(readOnly.statusCode).toBe(403);
+    expect(readOnly.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+
+    const mismatchedTenant = await app.inject({ method: 'POST', url: '/api/audit/job', headers: auditOperatorIdentity('tenant_other'), payload: validRequest });
+    expect(mismatchedTenant.statusCode).toBe(403);
+    expect(mismatchedTenant.json()).toMatchObject({ error: { code: 'TENANT_FORBIDDEN' } });
+  });
+
   it('returns locally maintained authority evidence when RAG is enabled', async () => {
     const app = buildApp();
     apps.push(app);
@@ -155,6 +177,7 @@ describe('audit API routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity(),
       payload: {
         ...validRequest,
         options: {
@@ -190,6 +213,7 @@ describe('audit API routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: superAdminIdentity(),
       payload: {
         ...validRequest,
         job: {
@@ -206,6 +230,7 @@ describe('audit API routes', () => {
     const pendingResponse = await app.inject({
       method: 'GET',
       url: '/api/reviews?status=pending&tenantId=tenant_001',
+      headers: superAdminIdentity(),
     });
     const pending = pendingResponse.json<{ items: HumanReviewTicket[] }>();
 
@@ -222,6 +247,7 @@ describe('audit API routes', () => {
     const detailResponse = await app.inject({
       method: 'GET',
       url: '/api/reviews/audit_manual_001',
+      headers: superAdminIdentity(),
     });
 
     expect(detailResponse.statusCode).toBe(200);
@@ -232,6 +258,7 @@ describe('audit API routes', () => {
     const createAgainResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews',
+      headers: reviewerIdentity(),
       payload: {
         auditRunId: 'audit_manual_001',
         tenantId: 'tenant_001',
@@ -247,6 +274,7 @@ describe('audit API routes', () => {
     const decisionResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_manual_001/decision',
+      headers: superAdminIdentity(),
       payload: {
         reviewerId: 'mock_reviewer_001',
         finalDecision: 'REQUEST_REVISION',
@@ -273,6 +301,7 @@ describe('audit API routes', () => {
     const addToEvalResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_manual_001/add-to-eval',
+      headers: superAdminIdentity(),
       payload: {
         datasetId: 'human_review_feedback_test',
       },
@@ -295,6 +324,7 @@ describe('audit API routes', () => {
     const evalCasesResponse = await app.inject({
       method: 'GET',
       url: '/api/evals/datasets/human_review_feedback_test/cases',
+      headers: superAdminIdentity(),
     });
     expect(evalCasesResponse.statusCode).toBe(200);
     expect(evalCasesResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
@@ -302,6 +332,7 @@ describe('audit API routes', () => {
     const suggestionResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_manual_001/create-rule-suggestion',
+      headers: reviewerIdentity(),
       payload: {
         createdBy: 'mock_reviewer_001',
         feedbackType: 'RULE_TOO_BROAD',
@@ -321,6 +352,7 @@ describe('audit API routes', () => {
     const suggestionsResponse = await app.inject({
       method: 'GET',
       url: '/api/rule-suggestions?status=open&tenantId=tenant_001',
+      headers: complianceManagerIdentity(),
     });
     expect(suggestionsResponse.statusCode).toBe(200);
     expect(suggestionsResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
@@ -328,6 +360,7 @@ describe('audit API routes', () => {
     const resolveSuggestionResponse = await app.inject({
       method: 'POST',
       url: `/api/rule-suggestions/${suggestion.id}/resolve`,
+      headers: complianceManagerIdentity(),
       payload: {
         resolvedBy: 'mock_rule_admin',
         resolutionComment: '已进入规则发布流程。',
@@ -343,12 +376,14 @@ describe('audit API routes', () => {
     const pendingAfterDecision = await app.inject({
       method: 'GET',
       url: '/api/reviews?status=pending&tenantId=tenant_001',
+      headers: reviewerIdentity(),
     });
     expect(pendingAfterDecision.json<{ items: HumanReviewTicket[] }>().items).toEqual([]);
 
     const completedAfterDecision = await app.inject({
       method: 'GET',
       url: '/api/reviews?status=completed&tenantId=tenant_001',
+      headers: reviewerIdentity(),
     });
     expect(completedAfterDecision.json<{ items: HumanReviewTicket[] }>().items).toHaveLength(1);
   });
@@ -360,6 +395,7 @@ describe('audit API routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/audit/runs/missing-run',
+      headers: auditReaderIdentity(),
     });
 
     expect(response.statusCode).toBe(404);
@@ -382,6 +418,7 @@ describe('audit API routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity(),
       payload: validRequest,
     });
     const payload = response.json();

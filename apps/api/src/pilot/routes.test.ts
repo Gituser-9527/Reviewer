@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -78,6 +79,7 @@ describe('pilot ROI API routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_pilot_001'),
       payload: auditRequest,
     });
     expect(auditResponse.statusCode).toBe(201);
@@ -85,6 +87,7 @@ describe('pilot ROI API routes', () => {
     const betaRunsResponse = await app.inject({
       method: 'GET',
       url: '/api/beta-trial/runs?tenantId=tenant_pilot_001',
+      headers: auditOperatorIdentity('tenant_pilot_001'),
     });
     const betaRun = betaRunsResponse.json<{ items: Array<{ id: string }> }>().items[0];
     expect(betaRun).toBeDefined();
@@ -92,6 +95,7 @@ describe('pilot ROI API routes', () => {
     const humanResultResponse = await app.inject({
       method: 'POST',
       url: `/api/beta-trial/runs/${betaRun?.id}/human-result`,
+      headers: auditOperatorIdentity('tenant_pilot_001'),
       payload: {
         reviewerId: 'pilot_reviewer_001',
         finalDecision: 'APPROVE',
@@ -104,6 +108,7 @@ describe('pilot ROI API routes', () => {
     const createProjectResponse = await app.inject({
       method: 'POST',
       url: '/api/pilots/projects',
+      headers: auditOperatorIdentity('tenant_pilot_001'),
       payload: {
         tenantId: 'tenant_pilot_001',
         name: 'A 客户招聘合规试点',
@@ -124,6 +129,7 @@ describe('pilot ROI API routes', () => {
     const feedbackResponse = await app.inject({
       method: 'POST',
       url: `/api/pilots/projects/${project.id}/feedback`,
+      headers: auditOperatorIdentity('tenant_pilot_001'),
       payload: {
         feedbackType: 'satisfaction',
         rating: 4,
@@ -136,6 +142,7 @@ describe('pilot ROI API routes', () => {
     const dashboardResponse = await app.inject({
       method: 'GET',
       url: `/api/pilots/projects/${project.id}/dashboard`,
+      headers: auditOperatorIdentity('tenant_pilot_001'),
     });
     const dashboard = dashboardResponse.json<{
       dailyMetrics: Array<{ totalJobsAudited: number; falsePositiveRate: number }>;
@@ -153,6 +160,7 @@ describe('pilot ROI API routes', () => {
     const reportResponse = await app.inject({
       method: 'POST',
       url: `/api/pilots/projects/${project.id}/roi-report`,
+      headers: auditOperatorIdentity('tenant_pilot_001'),
     });
     expect(reportResponse.statusCode).toBe(201);
     expect(reportResponse.json()).toMatchObject({
@@ -163,6 +171,7 @@ describe('pilot ROI API routes', () => {
     const exportResponse = await app.inject({
       method: 'GET',
       url: `/api/pilots/projects/${project.id}/roi-report/export?format=markdown`,
+      headers: auditOperatorIdentity('tenant_pilot_001'),
     });
     expect(exportResponse.statusCode).toBe(200);
     expect(exportResponse.headers['content-type']).toContain('text/markdown');
@@ -171,6 +180,7 @@ describe('pilot ROI API routes', () => {
     const feedbackListResponse = await app.inject({
       method: 'GET',
       url: `/api/pilots/feedback?pilotProjectId=${project.id}`,
+      headers: auditOperatorIdentity('tenant_pilot_001'),
     });
     expect(feedbackListResponse.statusCode).toBe(200);
     expect(feedbackListResponse.json<{ items: unknown[] }>().items).toHaveLength(1);

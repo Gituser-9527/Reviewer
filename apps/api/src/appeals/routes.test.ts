@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, reviewerIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -36,6 +37,7 @@ describe('appeal review agent routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_appeal'),
       payload: auditRequest,
     });
     expect(auditResponse.statusCode).toBe(201);
@@ -45,11 +47,7 @@ describe('appeal review agent routes', () => {
     const createAppealResponse = await app.inject({
       method: 'POST',
       url: '/api/appeals',
-      headers: {
-        'x-user-id': 'tenant_admin_appeal',
-        'x-user-role': 'TENANT_ADMIN',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
       payload: {
         tenantId: 'tenant_appeal',
         auditRunId: audit.auditId,
@@ -67,11 +65,7 @@ describe('appeal review agent routes', () => {
     const listResponse = await app.inject({
       method: 'GET',
       url: '/api/appeals?tenantId=tenant_appeal&status=submitted',
-      headers: {
-        'x-user-id': 'reviewer_appeal',
-        'x-user-role': 'REVIEWER',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
     });
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
@@ -79,11 +73,7 @@ describe('appeal review agent routes', () => {
     const messageResponse = await app.inject({
       method: 'POST',
       url: `/api/appeals/${appeal.id}/messages`,
-      headers: {
-        'x-user-id': 'tenant_admin_appeal',
-        'x-user-role': 'TENANT_ADMIN',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
       payload: {
         senderType: 'enterprise',
         senderId: 'enterprise_user_001',
@@ -95,11 +85,7 @@ describe('appeal review agent routes', () => {
     const reportResponse = await app.inject({
       method: 'POST',
       url: `/api/appeals/${appeal.id}/agent-report`,
-      headers: {
-        'x-user-id': 'reviewer_appeal',
-        'x-user-role': 'REVIEWER',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
     });
     expect(reportResponse.statusCode).toBe(201);
     const report = reportResponse.json<{
@@ -114,11 +100,7 @@ describe('appeal review agent routes', () => {
     const detailAfterReportResponse = await app.inject({
       method: 'GET',
       url: `/api/appeals/${appeal.id}`,
-      headers: {
-        'x-user-id': 'reviewer_appeal',
-        'x-user-role': 'REVIEWER',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
     });
     expect(detailAfterReportResponse.statusCode).toBe(200);
     expect(detailAfterReportResponse.json()).toMatchObject({
@@ -134,11 +116,7 @@ describe('appeal review agent routes', () => {
     const reviewResultResponse = await app.inject({
       method: 'POST',
       url: `/api/appeals/${appeal.id}/review-result`,
-      headers: {
-        'x-user-id': 'reviewer_appeal',
-        'x-user-role': 'REVIEWER',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
       payload: {
         reviewerId: 'reviewer_appeal',
         finalDecision: 'OVERTURN',
@@ -154,6 +132,7 @@ describe('appeal review agent routes', () => {
     const addToEvalResponse = await app.inject({
       method: 'POST',
       url: `/api/appeals/${appeal.id}/add-to-eval`,
+      headers: superAdminIdentity(),
       payload: {
         datasetId: 'appeal_feedback_test',
       },
@@ -175,11 +154,7 @@ describe('appeal review agent routes', () => {
     const createSuggestionResponse = await app.inject({
       method: 'POST',
       url: `/api/appeals/${appeal.id}/create-rule-suggestion`,
-      headers: {
-        'x-user-id': 'reviewer_appeal',
-        'x-user-role': 'REVIEWER',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
       payload: {
         createdBy: 'reviewer_appeal',
         description: '更新后文案申诉成功样本应加入规则回归测试。',
@@ -197,11 +172,7 @@ describe('appeal review agent routes', () => {
     const suggestionsResponse = await app.inject({
       method: 'GET',
       url: '/api/appeals/rule-suggestions?tenantId=tenant_appeal',
-      headers: {
-        'x-user-id': 'reviewer_appeal',
-        'x-user-role': 'REVIEWER',
-        'x-tenant-id': 'tenant_appeal',
-      },
+      headers: reviewerIdentity('tenant_appeal'),
     });
     expect(suggestionsResponse.statusCode).toBe(200);
     expect(suggestionsResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
@@ -214,6 +185,7 @@ describe('appeal review agent routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_appeal'),
       payload: auditRequest,
     });
     const audit = auditResponse.json<AuditResult>();
@@ -221,6 +193,7 @@ describe('appeal review agent routes', () => {
     const appealResponse = await app.inject({
       method: 'POST',
       url: '/api/appeals',
+      headers: reviewerIdentity('tenant_appeal'),
       payload: {
         tenantId: 'tenant_appeal',
         auditRunId: audit.auditId,
@@ -234,11 +207,13 @@ describe('appeal review agent routes', () => {
     await app.inject({
       method: 'POST',
       url: `/api/appeals/${appeal.id}/agent-report`,
+      headers: reviewerIdentity('tenant_appeal'),
     });
 
     const detailResponse = await app.inject({
       method: 'GET',
       url: `/api/appeals/${appeal.id}`,
+      headers: reviewerIdentity('tenant_appeal'),
     });
     expect(detailResponse.statusCode).toBe(200);
     const detail = detailResponse.json();

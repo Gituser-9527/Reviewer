@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult, JobPostingInput } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 import type { AuditJobRequest } from '../audit/schemas.js';
 import type { RuntimeSelection } from '../runtime/services.js';
 import { createPerformanceServices, FallbackPolicyService } from './service.js';
@@ -26,6 +27,10 @@ function auditPayload(tenantId = 'tenant_perf') {
       enableRag: false,
     },
   };
+}
+
+function tenantAuditOperator(tenantId: string): Record<string, string> {
+  return auditOperatorIdentity(tenantId);
 }
 
 function fakeResult(
@@ -63,9 +68,10 @@ function fakeResult(
 async function waitForBatch(
   app: ReturnType<typeof buildApp>,
   batchId: string,
+  tenantId: string,
 ): Promise<Record<string, unknown>> {
   for (let index = 0; index < 30; index += 1) {
-    const response = await app.inject({ method: 'GET', url: `/api/audit/batch/${batchId}` });
+    const response = await app.inject({ method: 'GET', url: `/api/audit/batch/${batchId}`, headers: tenantAuditOperator(tenantId) });
     const batch = response.json<Record<string, unknown>>();
     if (batch.status === 'completed' || batch.status === 'partial_failed' || batch.status === 'failed') {
       return batch;
@@ -92,6 +98,7 @@ describe('performance, cost and async queue routes', () => {
     const limitUpdate = await app.inject({
       method: 'PATCH',
       url: '/api/usage/limits/tenant_perf',
+      headers: superAdminIdentity(),
       payload: {
         tenantDailyAuditLimit: 10,
         tenantPerMinuteLimit: 10,
@@ -103,6 +110,7 @@ describe('performance, cost and async queue routes', () => {
     const batchResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/batch',
+      headers: tenantAuditOperator('tenant_perf'),
       payload: {
         tenantId: 'tenant_perf',
         jobs: [
@@ -127,7 +135,7 @@ describe('performance, cost and async queue routes', () => {
       totalCount: 2,
     });
     const batchId = batchResponse.json<{ id: string }>().id;
-    const completed = await waitForBatch(app, batchId);
+    const completed = await waitForBatch(app, batchId, 'tenant_perf');
     expect(completed).toMatchObject({
       status: 'completed',
       completedCount: 2,
@@ -137,6 +145,7 @@ describe('performance, cost and async queue routes', () => {
     const itemsResponse = await app.inject({
       method: 'GET',
       url: `/api/audit/batch/${batchId}/items`,
+      headers: tenantAuditOperator('tenant_perf'),
     });
     expect(itemsResponse.statusCode).toBe(200);
     expect(itemsResponse.json<{ items: Array<{ status: string }> }>().items).toHaveLength(2);
@@ -147,6 +156,7 @@ describe('performance, cost and async queue routes', () => {
     const costsResponse = await app.inject({
       method: 'GET',
       url: '/api/usage/costs?tenantId=tenant_perf',
+      headers: tenantAuditOperator('tenant_perf'),
     });
     expect(costsResponse.statusCode).toBe(200);
     expect(costsResponse.json()).toMatchObject({
@@ -157,6 +167,7 @@ describe('performance, cost and async queue routes', () => {
     const limitsResponse = await app.inject({
       method: 'GET',
       url: '/api/usage/limits?tenantId=tenant_perf',
+      headers: tenantAuditOperator('tenant_perf'),
     });
     expect(limitsResponse.statusCode).toBe(200);
     expect(limitsResponse.json()).toMatchObject({
@@ -185,6 +196,7 @@ describe('performance, cost and async queue routes', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: tenantAuditOperator('tenant_timeout'),
       payload: auditPayload('tenant_timeout'),
     });
     expect(response.statusCode).toBe(201);
@@ -210,6 +222,7 @@ describe('performance, cost and async queue routes', () => {
     const first = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: tenantAuditOperator('tenant_limited'),
       payload: auditPayload('tenant_limited'),
     });
     expect(first.statusCode).toBe(201);
@@ -217,6 +230,7 @@ describe('performance, cost and async queue routes', () => {
     const second = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: tenantAuditOperator('tenant_limited'),
       payload: { ...auditPayload('tenant_limited'), jobPostingId: 'job_limited_002' },
     });
     expect(second.statusCode).toBe(429);

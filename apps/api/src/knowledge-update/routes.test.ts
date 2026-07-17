@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
+import { superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -10,11 +11,13 @@ afterEach(async () => {
 describe('law KB update agent routes', () => {
   it('imports documents, creates diff and suggestion, approves a new lawKbVersion, and rolls it out', async () => {
     const app = buildApp();
+    const headers = superAdminIdentity();
     apps.push(app);
 
     const sourceResponse = await app.inject({
       method: 'POST',
       url: '/api/law-kb/sources',
+      headers,
       payload: {
         name: '人社部公开政策库',
         sourceType: 'LAW',
@@ -29,6 +32,7 @@ describe('law KB update agent routes', () => {
     const checkResponse = await app.inject({
       method: 'POST',
       url: `/api/law-kb/sources/${source.id}/check`,
+      headers,
     });
     expect(checkResponse.statusCode).toBe(200);
     expect(checkResponse.json()).toMatchObject({
@@ -38,6 +42,7 @@ describe('law KB update agent routes', () => {
     const importV1Response = await app.inject({
       method: 'POST',
       url: '/api/law-kb/documents/import',
+      headers,
       payload: {
         sourceId: source.id,
         title: '就业公平政策摘要',
@@ -65,6 +70,7 @@ describe('law KB update agent routes', () => {
     const importV2Response = await app.inject({
       method: 'POST',
       url: '/api/law-kb/documents/import',
+      headers,
       payload: {
         sourceId: source.id,
         documentId: importedV1.document.id,
@@ -97,6 +103,7 @@ describe('law KB update agent routes', () => {
     const diffResponse = await app.inject({
       method: 'GET',
       url: `/api/law-kb/documents/${importedV1.document.id}/diff?version=v2`,
+      headers,
     });
     expect(diffResponse.statusCode).toBe(200);
     expect(diffResponse.json()).toMatchObject({
@@ -107,6 +114,7 @@ describe('law KB update agent routes', () => {
     const suggestionResponse = await app.inject({
       method: 'POST',
       url: '/api/law-kb/suggestions',
+      headers,
       payload: {
         documentVersionId: importedV2.version.id,
       },
@@ -119,6 +127,7 @@ describe('law KB update agent routes', () => {
     const impactResponse = await app.inject({
       method: 'GET',
       url: `/api/law-kb/impact-reports/${suggestion.id}`,
+      headers,
     });
     expect(impactResponse.statusCode).toBe(200);
     expect(impactResponse.json()).toMatchObject({
@@ -129,6 +138,7 @@ describe('law KB update agent routes', () => {
     const approveResponse = await app.inject({
       method: 'POST',
       url: `/api/law-kb/suggestions/${suggestion.id}/approve`,
+      headers,
       payload: {
         approvedBy: 'law_reviewer',
         lawKbVersion: 'lawkb-test-v2',
@@ -147,6 +157,7 @@ describe('law KB update agent routes', () => {
     const runtimeResponse = await app.inject({
       method: 'GET',
       url: '/api/runtime-configs',
+      headers,
     });
     expect(runtimeResponse.statusCode).toBe(200);
     expect(runtimeResponse.json<{ items: Array<{ key: string; candidateVersion?: string }> }>().items).toEqual(
@@ -158,6 +169,7 @@ describe('law KB update agent routes', () => {
     const rolloutResponse = await app.inject({
       method: 'POST',
       url: '/api/law-kb/versions/lawkb-test-v2/rollout',
+      headers,
       payload: {
         stableVersion: 'local-2026-06-12',
         tenantAllowList: ['tenant_law_kb'],
@@ -175,6 +187,7 @@ describe('law KB update agent routes', () => {
     const rollbackResponse = await app.inject({
       method: 'POST',
       url: `/api/rollouts/${rolloutResponse.json<{ id: string }>().id}/rollback`,
+      headers,
     });
     expect(rollbackResponse.statusCode).toBe(200);
     expect(rollbackResponse.json()).toMatchObject({

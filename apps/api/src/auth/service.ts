@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import { redactJson, redactSensitiveText } from '@job-compliance/database';
 
@@ -9,6 +9,7 @@ export const roles = [
   'REVIEWER',
   'RULE_OPERATOR',
   'VIEWER',
+  'AUDIT_OPERATOR',
 ] as const;
 
 export type Role = (typeof roles)[number];
@@ -88,6 +89,7 @@ const permissionsByRole: Record<Role, Permission[]> = {
   REVIEWER: ['audit:read', 'review:read', 'review:write'],
   RULE_OPERATOR: ['rule:read', 'rule:edit_draft', 'review:read', 'eval:read'],
   VIEWER: ['audit:read', 'review:read', 'rule:read', 'runtime:read', 'eval:read'],
+  AUDIT_OPERATOR: ['audit:read', 'audit:write'],
 };
 
 function headerValue(request: FastifyRequest, name: string): string | undefined {
@@ -96,14 +98,14 @@ function headerValue(request: FastifyRequest, name: string): string | undefined 
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function normalizeRole(value: string | undefined): Role {
+function normalizeRole(value: string | undefined): Role | undefined {
   const normalized = value?.trim().toUpperCase();
-  return roles.includes(normalized as Role) ? (normalized as Role) : 'SUPER_ADMIN';
+  return roles.includes(normalized as Role) ? (normalized as Role) : undefined;
 }
 
 export class AuthorizationError extends Error {
   constructor(
-    readonly code: 'FORBIDDEN' | 'TENANT_FORBIDDEN',
+    readonly code: 'AUTHENTICATION_REQUIRED' | 'FORBIDDEN' | 'TENANT_FORBIDDEN',
     message: string,
   ) {
     super(message);
@@ -112,9 +114,26 @@ export class AuthorizationError extends Error {
 }
 
 export class AuthService {
+  constructor(private readonly env: NodeJS.ProcessEnv = process.env) {}
   getContext(request: FastifyRequest): AuthContext {
-    const role = normalizeRole(headerValue(request, 'x-user-role'));
+    const authorization = headerValue(request, 'authorization');
     const tenantId = headerValue(request, 'x-tenant-id');
+    const token = this.env.DEV_EXTENSION_AUTH_TOKEN;
+    const enabled = (this.env.NODE_ENV === 'development' || this.env.NODE_ENV === 'test') && this.env.DEV_EXTENSION_AUTH_ENABLED === 'true';
+    if (authorization !== undefined) {
+      if (!enabled || !token || !authorization.startsWith('Bearer ') || !equal(authorization.slice(7), token)) {
+        throw new AuthorizationError('AUTHENTICATION_REQUIRED', 'Authentication is required.');
+      }
+      const boundTenant = this.env.DEV_EXTENSION_TENANT_ID;
+      if (!boundTenant || tenantId !== boundTenant) throw new AuthorizationError('TENANT_FORBIDDEN', 'Tenant data is outside current scope.');
+      return { userId: 'local-extension-dev', role: 'AUDIT_OPERATOR', tenantId: boundTenant, permissions: permissionsByRole.AUDIT_OPERATOR };
+    }
+    // Header roles are a test-only transport fixture. They are never accepted by a deployed API.
+    if (this.env.NODE_ENV !== 'test') {
+      throw new AuthorizationError('AUTHENTICATION_REQUIRED', 'Authentication is required.');
+    }
+    const role = normalizeRole(headerValue(request, 'x-user-role'));
+    if (!role) throw new AuthorizationError('AUTHENTICATION_REQUIRED', 'Authentication is required.');
     return {
       userId: headerValue(request, 'x-user-id') ?? 'dev_super_admin',
       role,
@@ -158,6 +177,11 @@ export class AuthService {
   currentUserPayload(request: FastifyRequest): AuthContext {
     return this.getContext(request);
   }
+}
+function equal(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export class AuditOperationLogService {

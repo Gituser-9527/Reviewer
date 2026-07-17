@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
+import { complianceManagerIdentity, ruleOperatorIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 import { FileRuleManagementStore } from './store.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
@@ -55,6 +56,7 @@ describe('rule management routes', () => {
     const createdSet = await app.inject({
       method: 'POST',
       url: '/api/rulesets',
+      headers: ruleOperatorIdentity(),
       payload: {
         id: 'CN_MAINLAND',
         name: '中国大陆招聘合规规则',
@@ -71,6 +73,7 @@ describe('rule management routes', () => {
     const added = await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/rules',
+      headers: ruleOperatorIdentity(),
       payload: {
         fileName: 'fee-deposit.yml',
         rule: {
@@ -94,6 +97,7 @@ describe('rule management routes', () => {
     const patched = await app.inject({
       method: 'PATCH',
       url: '/api/rules/CN_FEE_DEPOSIT_TEST_001',
+      headers: ruleOperatorIdentity(),
       payload: {
         jurisdiction: 'CN_MAINLAND',
         explanation: '岗位疑似要求劳动者缴纳保证金。',
@@ -110,6 +114,7 @@ describe('rule management routes', () => {
     const testResult = await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/test',
+      headers: ruleOperatorIdentity(),
       payload: {
         text: '招聘文员，入职需缴纳保证金500元。',
       },
@@ -132,6 +137,7 @@ describe('rule management routes', () => {
     const evalResult = await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/run-eval',
+      headers: superAdminIdentity(),
       payload: {
         ruleVersion: '1.0.1',
       },
@@ -147,6 +153,7 @@ describe('rule management routes', () => {
     const firstPublish = await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/publish',
+      headers: complianceManagerIdentity(),
       payload: {
         ruleVersion: '1.0.1',
         actorId: 'tester',
@@ -162,6 +169,7 @@ describe('rule management routes', () => {
     await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/rules',
+      headers: ruleOperatorIdentity(),
       payload: {
         fileName: 'privacy.yml',
         rule: {
@@ -182,6 +190,7 @@ describe('rule management routes', () => {
     const secondPublish = await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/publish',
+      headers: complianceManagerIdentity(),
       payload: {
         ruleVersion: '1.0.2',
         actorId: 'tester',
@@ -192,6 +201,7 @@ describe('rule management routes', () => {
     const records = await app.inject({
       method: 'GET',
       url: '/api/rule-publish-records',
+      headers: ruleOperatorIdentity(),
     });
     expect(records.statusCode).toBe(200);
     expect(records.json().items).toEqual(
@@ -204,6 +214,7 @@ describe('rule management routes', () => {
     const rollback = await app.inject({
       method: 'POST',
       url: '/api/rulesets/CN_MAINLAND/rollback',
+      headers: complianceManagerIdentity(),
       payload: {
         actorId: 'tester',
         targetVersion: '1.0.1',
@@ -219,6 +230,7 @@ describe('rule management routes', () => {
     const detail = await app.inject({
       method: 'GET',
       url: '/api/rulesets/CN_MAINLAND',
+      headers: ruleOperatorIdentity(),
     });
 
     expect(detail.statusCode).toBe(200);
@@ -234,6 +246,7 @@ describe('rule management routes', () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/rules?jurisdiction=CN_MAINLAND&status=all',
+      headers: ruleOperatorIdentity(),
     });
     const payload = response.json();
 
@@ -262,6 +275,7 @@ describe('rule management routes', () => {
     const created = await app.inject({
       method: 'POST',
       url: '/api/rules',
+      headers: ruleOperatorIdentity(),
       payload: {
         jurisdiction: 'CN_MAINLAND',
         fileName: 'privacy.yml',
@@ -286,6 +300,7 @@ describe('rule management routes', () => {
     const toggled = await app.inject({
       method: 'POST',
       url: '/api/rules/CN_PRIVACY_WECHAT_002/toggle',
+      headers: ruleOperatorIdentity(),
       payload: {
         jurisdiction: 'CN_MAINLAND',
         enabled: false,
@@ -302,6 +317,7 @@ describe('rule management routes', () => {
     const published = await app.inject({
       method: 'GET',
       url: '/api/rules?jurisdiction=CN_MAINLAND&status=published',
+      headers: ruleOperatorIdentity(),
     });
 
     expect(published.json().items).not.toEqual(
@@ -315,6 +331,7 @@ describe('rule management routes', () => {
     await app.inject({
       method: 'POST',
       url: '/api/rules',
+      headers: ruleOperatorIdentity(),
       payload: {
         jurisdiction: 'CN_MAINLAND',
         fileName: 'privacy.yml',
@@ -336,6 +353,7 @@ describe('rule management routes', () => {
     const published = await app.inject({
       method: 'POST',
       url: '/api/rules/publish',
+      headers: complianceManagerIdentity(),
       payload: {
         jurisdiction: 'CN_MAINLAND',
         ruleVersion: '1.0.1',
@@ -360,6 +378,7 @@ describe('rule management routes', () => {
     const versions = await app.inject({
       method: 'GET',
       url: '/api/rules/versions?jurisdiction=CN_MAINLAND',
+      headers: ruleOperatorIdentity(),
     });
 
     expect(versions.json().items).toEqual([

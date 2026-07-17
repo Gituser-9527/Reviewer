@@ -161,6 +161,29 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     logger: process.env.NODE_ENV === 'test' ? false : { level: process.env.LOG_LEVEL ?? 'info' },
     disableRequestLogging: true,
   });
+  app.addHook('onRequest', async (request, reply) => {
+    const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
+    const enabled = (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && process.env.DEV_EXTENSION_AUTH_ENABLED === 'true';
+    const allowed = (process.env.DEV_EXTENSION_ORIGINS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => /^chrome-extension:\/\/[a-p]{32}$/u.test(value));
+    if (!origin) return;
+    if (!enabled || !allowed.includes(origin)) return reply.code(403).send({ error: { code: 'ORIGIN_FORBIDDEN', message: 'Origin is not allowed.', retryable: false } });
+    if (request.method === 'OPTIONS') {
+      const requestedMethod = request.headers['access-control-request-method'];
+      const requestedHeaders = typeof request.headers['access-control-request-headers'] === 'string'
+        ? request.headers['access-control-request-headers'].split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
+        : [];
+      const allowedMethods = ['GET', 'POST'];
+      const allowedHeaders = ['authorization', 'content-type', 'x-tenant-id'];
+      if (typeof requestedMethod !== 'string' || !allowedMethods.includes(requestedMethod.toUpperCase()) || requestedHeaders.some((header) => !allowedHeaders.includes(header))) {
+        return reply.code(403).send({ error: { code: 'CORS_REQUEST_FORBIDDEN', message: 'CORS request is not allowed.', retryable: false } });
+      }
+    }
+    reply.header('Access-Control-Allow-Origin', origin).header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS').header('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-tenant-id').header('Vary', 'Origin');
+    if (request.method === 'OPTIONS') return reply.code(204).send();
+  });
   let auditRunStore: AuditRunStore;
   let reviewStore: HumanReviewStore;
   let evalStore: EvalStore;
@@ -261,7 +284,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
 
     if (error instanceof AuthorizationError) {
-      return reply.code(403).send({
+      return reply.code(error.code === 'AUTHENTICATION_REQUIRED' ? 401 : 403).send({
         requestId: request.id,
         error: {
           code: error.code,
