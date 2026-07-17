@@ -47,6 +47,7 @@
     "build:extension": "npm run build --workspace @job-compliance/extension",
     "test:extension": "vitest run apps/extension/src",
     "test:extension:e2e": "npm run build:extension && node apps/extension/e2e/capture-audit.e2e.mjs",
+    "test:extension:local-api:postgres": "powershell -ExecutionPolicy Bypass -File scripts/run-extension-local-api-postgres-e2e.ps1",
     "check:i18n": "npm run build --workspace @job-compliance/web",
     "typecheck": "npm run build:packages && npm run typecheck --workspace @job-compliance/api && npm run typecheck --workspace @job-compliance/web"
   },
