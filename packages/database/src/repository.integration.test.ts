@@ -8,8 +8,11 @@ import { PostgresAuditRunRepository } from './repository.js';
 
 const { Pool } = pg;
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+if (!testDatabaseUrl) {
+  throw new Error('TEST_DATABASE_URL is required for PostgreSQL repository integration E2E');
+}
 
-describe.skipIf(testDatabaseUrl === undefined)('PostgresAuditRunRepository integration', () => {
+describe('PostgresAuditRunRepository integration', () => {
   const pool = new Pool({ connectionString: testDatabaseUrl });
   const repository = new PostgresAuditRunRepository({ pool });
   const tenantId = `tenant_test_${Date.now()}`;

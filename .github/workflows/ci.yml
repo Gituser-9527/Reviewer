@@ -29,6 +29,11 @@ jobs:
       - run: npm ci
       - run: npm run test:db:migrate
       - run: npm run test:postgres
+      - run: npm run test:production-enrichment:postgres
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:extension:local-api:postgres
+        env:
+          MANAGE_TEST_DATABASE: 'false'
   verify:
     runs-on: ubuntu-latest
     steps:

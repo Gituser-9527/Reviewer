@@ -16,14 +16,19 @@ if (-not $env:TEST_DATABASE_URL) {
 
 $env:DATABASE_URL = $env:TEST_DATABASE_URL
 $databaseStarted = $false
+$manageDatabase = $env:MANAGE_TEST_DATABASE -ne 'false'
 
 try {
-  & npm run test:db:up
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-  $databaseStarted = $true
+  if ($manageDatabase) {
+    & npm run test:db:up
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $databaseStarted = $true
+  }
 
-  & npm run test:db:wait
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  if ($manageDatabase) {
+    & npm run test:db:wait
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  }
 
   & npm run test:db:migrate
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

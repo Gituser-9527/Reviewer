@@ -21,7 +21,7 @@
     "test:db:wait": "powershell -ExecutionPolicy Bypass -File scripts/test-db.ps1 wait",
     "test:db:migrate": "powershell -ExecutionPolicy Bypass -File scripts/run-with-test-env.ps1 npm run db:migrate",
     "doctor:test-db": "powershell -ExecutionPolicy Bypass -File scripts/doctor-test-db.ps1",
-    "test:postgres": "powershell -ExecutionPolicy Bypass -File scripts/run-with-test-env.ps1 npm exec vitest run packages/database/src/repository.integration.test.ts",
+    "test:postgres": "powershell -ExecutionPolicy Bypass -File scripts/run-with-test-env.ps1 npx vitest run --config vitest.postgres.config.ts packages/database/src/repository.integration.test.ts",
     "dev:api": "npm run build:packages && npm run dev --workspace @job-compliance/api",
     "dev:web": "npm run build:packages && npm run dev --workspace @job-compliance/web",
     "eval": "npm run build:packages && tsx --conditions=import evals/run-eval.ts",

@@ -3,5 +3,5 @@ if (-not $env:TEST_DATABASE_URL) {
 }
 
 $env:DATABASE_URL = $env:TEST_DATABASE_URL
-& npm exec vitest run apps/api/src/audit/production-enrichment.postgres.test.ts
+& npx vitest run --config vitest.postgres.config.ts apps/api/src/audit/production-enrichment.postgres.test.ts
 exit $LASTEXITCODE
