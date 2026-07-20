@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: npm }
+      - name: Provide PowerShell command compatibility
+        run: sudo ln -sf "$(command -v pwsh)" /usr/local/bin/powershell
       - run: npm ci
       - run: npm run test:db:migrate
       - run: npm run test:postgres
