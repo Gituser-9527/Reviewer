@@ -85,4 +85,26 @@ describe('ProductionRewriteRuleEngineAdapter', () => {
       'RULE_ENGINE_UNAVAILABLE',
     );
   });
+  it('rechecks against the audit context rule version when the current version changes', async () => {
+    const versions: string[] = [];
+    const adapter = new ProductionRewriteRuleEngineAdapter(
+      {
+        getCurrentRuleVersion: async () => '2.0.0',
+        getRulesDirectoryForVersion: async (_jurisdiction, ruleVersion) => {
+          versions.push(ruleVersion);
+          return 'unused';
+        },
+      },
+      {
+        resolve: async ({ ruleVersion }) => {
+          versions.push(ruleVersion);
+          return {
+            evaluate: () => [],
+          } as never;
+        },
+      },
+    );
+    await adapter.review({ context: context(), rewrite: rewrite('欢迎符合岗位要求的候选人') });
+    expect(versions).toEqual(['1.0.0']);
+  });
 });

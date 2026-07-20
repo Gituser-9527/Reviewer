@@ -1,6 +1,6 @@
 import { PostgresLLMPersistenceRepository, type AsyncJobEntity } from '@job-compliance/database';
-import type { LLMProvider } from '@job-compliance/core';
-import type { TenantLLMProviderResolver } from '../settings/provider-resolver.js';
+import { SecretEncryptionService, type LLMProvider } from '@job-compliance/core';
+import { TenantLLMProviderResolver } from '../settings/provider-resolver.js';
 import {
   validateExplanationRuntime,
   validateRewriteRuntime,
@@ -301,6 +301,7 @@ export class EnrichmentWorker {
       const code = error instanceof Error ? error.message : 'PROVIDER_UNAVAILABLE';
       const noRequest =
         code === 'NO_ACTIVE_LLM_CONNECTION' ||
+        code === 'LLM_CONNECTION_UNAVAILABLE' ||
         code === 'JOB_PAYLOAD_INVALID' ||
         code === 'NO_FINDINGS_AVAILABLE';
       if (noRequest) {
@@ -351,18 +352,25 @@ export class EnrichmentWorker {
   }
 }
 
-async function main(): Promise<void> {
-  const repository = new PostgresLLMPersistenceRepository();
-  const worker = new EnrichmentWorker(
+export function createProductionEnrichmentWorker(
+  repository: PostgresLLMPersistenceRepository,
+  encryption: SecretEncryptionService = SecretEncryptionService.fromEnv(),
+): EnrichmentWorker {
+  return new EnrichmentWorker(
     repository,
     undefined,
     undefined,
-    undefined,
+    new TenantEnrichmentProviderResolver(new TenantLLMProviderResolver(repository, encryption)),
     new PostgresAuditEnrichmentContextLoader(repository.pool),
     new ProductionRewriteRuleEngineAdapter(),
     new RewriteSemanticClassifierAdapter(),
     new RewriteReflectionAdapter(),
   );
+}
+
+async function main(): Promise<void> {
+  const repository = new PostgresLLMPersistenceRepository();
+  const worker = createProductionEnrichmentWorker(repository);
   const once = process.argv.includes('--once');
   let stopping = false;
   process.on('SIGINT', () => {

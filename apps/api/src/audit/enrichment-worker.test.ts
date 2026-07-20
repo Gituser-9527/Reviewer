@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { EnrichmentWorker, MockEnrichmentProvider } from './enrichment-worker.js';
+import { SecretEncryptionService } from '@job-compliance/core';
+import type { PostgresLLMPersistenceRepository } from '@job-compliance/database';
+import { createProductionEnrichmentWorker, EnrichmentWorker, MockEnrichmentProvider } from './enrichment-worker.js';
 import type { AuditEnrichmentContext } from './enrichment-context-loader.js';
 
 describe('EnrichmentWorker', () => {
+  it('wires the tenant provider resolver into the production worker factory', () => {
+    const worker = createProductionEnrichmentWorker(
+      {} as PostgresLLMPersistenceRepository,
+      new SecretEncryptionService(Buffer.alloc(32)),
+    );
+    expect(worker).toBeInstanceOf(EnrichmentWorker);
+  });
+
   it('completes a mock explanation and records mock usage', async () => {
     const events: string[] = [];
     const job = {
@@ -105,6 +115,29 @@ describe('EnrichmentWorker', () => {
 
     await expect(worker.runOnce()).resolves.toBe(true);
     expect(loaded).toEqual([{ tenantId: 'tenant-a', auditRunId: 'audit-a' }]);
+  });
+
+  it('dead-letters a missing tenant provider without a Mock fallback', async () => {
+    const events: string[] = [];
+    const worker = new EnrichmentWorker(
+      {
+        releaseExpiredLocks: async () => 0,
+        claimNext: async () => ({
+          id: 'missing-provider', tenantId: 'tenant-a', type: 'AUDIT_GENERATE_EXPLANATIONS',
+          status: 'RUNNING', auditRunId: 'audit-a', attemptCount: 0, maxAttempts: 3,
+          payload: { tenantId: 'tenant-a', auditRunId: 'audit-a', jobType: 'AUDIT_GENERATE_EXPLANATIONS', promptVersion: 'v1', idempotencyKey: 'audit-a:explanation:v1' },
+        }),
+        completeJob: async () => undefined,
+        retryJob: async () => { events.push('retry'); },
+        deadLetter: async (_id, code) => { events.push(code); },
+        createUsage: async () => undefined,
+      },
+      undefined,
+      'worker-a',
+      { resolve: async () => { throw new Error('LLM_CONNECTION_UNAVAILABLE'); } },
+    );
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(events).toEqual(['LLM_CONNECTION_UNAVAILABLE']);
   });
 
   it('persists rejected rewrite coverage calculated from loader findings and provider changes', async () => {

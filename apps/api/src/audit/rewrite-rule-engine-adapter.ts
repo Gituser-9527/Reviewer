@@ -105,7 +105,7 @@ export class ProductionRewriteRuleEngineAdapter implements RewriteRuleEngineAdap
     rewrite: JobPostingRewriteResult;
   }): Promise<RewriteRuleEngineReview> {
     const jurisdiction = input.context.jurisdiction;
-    const ruleVersion = await this.ruleStore.getCurrentRuleVersion(jurisdiction);
+    const ruleVersion = input.context.ruleVersion;
     const engine = await this.resolver.resolve({ jurisdiction, ruleVersion });
     const posting = rewrittenPosting(input.context, input.rewrite);
     const rawText = [
