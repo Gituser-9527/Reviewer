@@ -35,6 +35,18 @@ function assertNoForbidden(value, forbidden) {
   }
 }
 
+function stableFindingId(category, severity, message, evidence) {
+  const value = `${category}\u001f${severity}\u001f${message}\u001f${evidence}`;
+  let first = 0x811c9dc5;
+  let second = 0x01000193;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
+  }
+  return `finding-${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
+}
+
 function reservePort() {
   return new Promise((resolvePort, rejectPort) => {
     const server = net.createServer();
@@ -270,14 +282,14 @@ try {
   ]).filter((value, index, values) => typeof value === 'string' && value.length >= 3 && values.indexOf(value) === index);
   assert.ok(actualEvidence.some((value) => value.includes('限女性') || value.includes('服装费')), 'The persisted real API result must include highlightable YAML-rule evidence.');
   const actualHighlightIds = new Set();
-  const seenEvidence = new Set();
-  storage.local.jobComplianceCaptureState.result.findings.forEach((finding, findingIndex) => {
+  storage.local.jobComplianceCaptureState.result.findings.forEach((finding) => {
+    const seenFindingEvidence = new Set();
     const texts = [...(finding.metadata?.matchedText ?? []), ...finding.evidence.flatMap((evidence) => evidence.quote ? [evidence.quote] : [])];
-    texts.forEach((text, textIndex) => {
+    texts.forEach((text) => {
       const normalized = text.trim();
-      if (normalized.length >= 2 && /[^\s\p{P}]/u.test(normalized) && !seenEvidence.has(normalized)) {
-        seenEvidence.add(normalized);
-        actualHighlightIds.add(`finding-${findingIndex}-${textIndex}`);
+      if (normalized.length >= 2 && /[^\s\p{P}]/u.test(normalized) && !seenFindingEvidence.has(normalized)) {
+        seenFindingEvidence.add(normalized);
+        actualHighlightIds.add(stableFindingId(finding.category, finding.severity, finding.message, normalized));
       }
     });
   });
