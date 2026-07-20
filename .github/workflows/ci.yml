@@ -30,6 +30,7 @@ jobs:
         run: sudo ln -sf "$(command -v pwsh)" /usr/local/bin/powershell
       - run: npm ci
       - run: npm run test:db:migrate
+      - run: npm run build:packages
       - run: npm run test:postgres
       - run: npm run test:production-enrichment:postgres
       - run: npx playwright install --with-deps chromium
