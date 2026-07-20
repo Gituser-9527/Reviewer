@@ -21,7 +21,7 @@ const tenantId = `extension-e2e-${randomUUID()}`;
 const otherTenantId = `extension-e2e-other-${randomUUID()}`;
 const token = `local-extension-e2e-${randomBytes(24).toString('base64url')}`;
 const encryptionKey = randomBytes(32).toString('base64');
-const fixture = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>脱敏本地岗位 Fixture</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"行政专员","description":"负责行政支持与招聘流程协调。限女性，已婚已育优先。入职需缴纳500元服装费。","hiringOrganization":{"name":"脱敏示例科技有限公司"},"jobLocation":{"address":"北京"},"baseSalary":{"value":"8k-15k"},"employmentType":"FULL_TIME","qualifications":"熟悉行政流程"}</script></head><body><main><h1>行政专员</h1></main></body></html>`;
+const fixture = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>脱敏本地岗位 Fixture</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"行政专员","description":"负责行政支持与招聘流程协调。限女性，已婚已育优先。入职需缴纳500元服装费。","hiringOrganization":{"name":"脱敏示例科技有限公司"},"jobLocation":{"address":"北京"},"baseSalary":{"value":"8k-15k"},"employmentType":"FULL_TIME","qualifications":"熟悉行政流程"}</script></head><body><main><h1>行政专员</h1><p id="job-description">负责行政支持与招聘流程协调。限<span>女性</span>，已婚已育优先。入职需缴纳500元服装费。</p><mark id="site-mark">网站自身标记</mark><input id="uneditable-risk-text" value="限女性"></main></body></html>`;
 
 function assertNoForbidden(value, forbidden) {
   if (Array.isArray(value)) {
@@ -263,6 +263,38 @@ try {
   assert.equal(storage.local.jobComplianceCaptureState.result.auditId, auditId);
   assert.equal(storage.session.jobComplianceDevConfig.accessToken, token);
   assertNoForbidden(storage.local.jobComplianceCaptureState.capture, new Set(['accesstoken', 'authorization', 'cookie', 'apikey', 'secret', 'rawhtml', 'html']));
+
+  const actualEvidence = storage.local.jobComplianceCaptureState.result.findings.flatMap((finding) => [
+    ...(finding.metadata?.matchedText ?? []),
+    ...finding.evidence.flatMap((evidence) => evidence.quote ? [evidence.quote] : []),
+  ]).filter((value, index, values) => typeof value === 'string' && value.length >= 3 && values.indexOf(value) === index);
+  assert.ok(actualEvidence.some((value) => value.includes('限女性') || value.includes('服装费')), 'The persisted real API result must include highlightable YAML-rule evidence.');
+
+  const originalJobText = await source.locator('#job-description').textContent();
+  await source.bringToFront();
+  await popup.locator('#highlight').click();
+  await source.locator('[data-job-compliance-highlight="true"]').first().waitFor();
+  const highlightedText = await source.locator('[data-job-compliance-highlight="true"]').allTextContents();
+  assert.ok(highlightedText.length > 0);
+  assert.equal(highlightedText.every((text) => actualEvidence.some((evidence) => evidence.includes(text))), true, 'Every highlighted DOM fragment must come from persisted real API evidence.');
+  const firstHighlightCount = await source.locator('[data-job-compliance-highlight="true"]').count();
+  assert.match(await popup.locator('#status').textContent(), new RegExp(`已高亮\\s+\\d+\\s+项；\\s*\\d+\\s+项未定位。`, 'u'));
+
+  await source.bringToFront();
+  await popup.locator('#highlight').click();
+  assert.equal(await source.locator('[data-job-compliance-highlight="true"]').count(), firstHighlightCount);
+  assert.equal(await source.locator('[data-job-compliance-highlight="true"] [data-job-compliance-highlight="true"]').count(), 0);
+
+  const auditCountBeforeClear = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
+  await source.bringToFront();
+  await popup.locator('#clearHighlights').click();
+  await source.locator('[data-job-compliance-highlight="true"]').waitFor({ state: 'detached' });
+  assert.equal(await source.locator('#job-description').textContent(), originalJobText);
+  assert.equal(await source.locator('#site-mark').textContent(), '网站自身标记');
+  assert.equal(await source.locator('#site-mark').count(), 1);
+  const auditCountAfterClear = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
+  assert.equal(auditCountAfterClear.rows[0].count, auditCountBeforeClear.rows[0].count);
+  assert.match(await popup.locator('#status').textContent(), /已清除\s+\d+\s+处页面高亮。/u);
 
   await popup.close();
   const restored = await context.newPage();
