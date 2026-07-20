@@ -8,6 +8,35 @@ on:
       - master
 
 jobs:
+  postgres-integration-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: job_compliance_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U test_user -d job_compliance_test" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5433/job_compliance_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - name: Provide PowerShell command compatibility
+        run: sudo ln -sf "$(command -v pwsh)" /usr/local/bin/powershell
+      - run: npm ci
+      - run: npm run test:db:migrate
+      - run: npm run build:packages
+      - run: npm run test:postgres
+      - run: npm run test:production-enrichment:postgres
+      - run: npx playwright install --with-deps chromium
+      - run: xvfb-run -a npm run test:extension:local-api:postgres
+        env:
+          MANAGE_TEST_DATABASE: 'false'
   verify:
     runs-on: ubuntu-latest
     steps:

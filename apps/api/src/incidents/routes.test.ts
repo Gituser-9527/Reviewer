@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, reviewerIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 import type { RuntimeSelection } from '../runtime/services.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
@@ -80,6 +81,7 @@ describe('incident response and emergency switch API routes', () => {
     const switchResponse = await app.inject({
       method: 'POST',
       url: '/api/emergency/switches/disable_llm/trigger',
+      headers: superAdminIdentity(),
       payload: {
         enabled: true,
         reason: 'LLM timeout drill',
@@ -95,6 +97,7 @@ describe('incident response and emergency switch API routes', () => {
     const disableRejectResponse = await app.inject({
       method: 'PATCH',
       url: '/api/emergency/switches/disable_auto_reject',
+      headers: superAdminIdentity(),
       payload: {
         enabled: true,
         reason: '暂停自动拦截演练',
@@ -106,6 +109,7 @@ describe('incident response and emergency switch API routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_incident_001'),
       payload: auditRequest,
     });
     const audit = auditResponse.json<AuditResult>();
@@ -118,6 +122,7 @@ describe('incident response and emergency switch API routes', () => {
     const reviewResponse = await app.inject({
       method: 'GET',
       url: '/api/reviews?status=pending&tenantId=tenant_incident_001',
+      headers: reviewerIdentity('tenant_incident_001'),
     });
     expect(reviewResponse.statusCode).toBe(200);
     expect(reviewResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
@@ -125,6 +130,7 @@ describe('incident response and emergency switch API routes', () => {
     const incidentResponse = await app.inject({
       method: 'POST',
       url: '/api/incidents',
+      headers: superAdminIdentity(),
       payload: {
         tenantId: 'tenant_incident_001',
         incidentType: 'llm_failure',
@@ -141,6 +147,7 @@ describe('incident response and emergency switch API routes', () => {
     const actionResponse = await app.inject({
       method: 'POST',
       url: `/api/incidents/${incident.id}/actions`,
+      headers: superAdminIdentity(),
       payload: {
         actionType: 'disable_llm',
         actorId: 'incident_commander',
@@ -152,6 +159,7 @@ describe('incident response and emergency switch API routes', () => {
     const postmortemResponse = await app.inject({
       method: 'POST',
       url: `/api/incidents/${incident.id}/postmortem`,
+      headers: superAdminIdentity(),
       payload: {
         rootCause: 'Provider timeout drill.',
         impact: 'No production impact.',
@@ -166,6 +174,7 @@ describe('incident response and emergency switch API routes', () => {
     const detailResponse = await app.inject({
       method: 'GET',
       url: `/api/incidents/${incident.id}`,
+      headers: superAdminIdentity(),
     });
     expect(detailResponse.statusCode).toBe(200);
     expect(detailResponse.json()).toMatchObject({
@@ -181,6 +190,7 @@ describe('incident response and emergency switch API routes', () => {
     const drillResponse = await app.inject({
       method: 'POST',
       url: '/api/incidents/drills/rule-rollback',
+      headers: superAdminIdentity(),
       payload: {
         actorId: 'drill_operator',
         ruleVersion: '1.0.0',

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { superAdminIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 
@@ -31,7 +32,7 @@ async function waitForBatch(
   batchId: string,
 ): Promise<Record<string, unknown>> {
   for (let index = 0; index < 50; index += 1) {
-    const response = await app.inject({ method: 'GET', url: `/api/audit/batch/${batchId}` });
+    const response = await app.inject({ method: 'GET', url: `/api/audit/batch/${batchId}`, headers: superAdminIdentity() });
     const batch = response.json<Record<string, unknown>>();
     if (batch.status === 'completed' || batch.status === 'partial_failed' || batch.status === 'failed') {
       return batch;
@@ -78,6 +79,7 @@ describe('productization SaaS/API routes', () => {
     const keyResponse = await app.inject({
       method: 'POST',
       url: '/api/product/tenants/tenant_saas/api-keys',
+      headers: superAdminIdentity(),
       payload: {
         name: 'Default integration key',
       },
@@ -90,6 +92,7 @@ describe('productization SaaS/API routes', () => {
     const webhookResponse = await app.inject({
       method: 'POST',
       url: '/api/product/tenants/tenant_saas/webhooks',
+      headers: superAdminIdentity(),
       payload: {
         url: 'mock://tenant-saas/audit',
         events: ['audit.completed', 'batch.completed'],
@@ -113,6 +116,7 @@ describe('productization SaaS/API routes', () => {
     const usageAfterSingle = await app.inject({
       method: 'GET',
       url: '/api/product/tenants/tenant_saas/usage',
+      headers: superAdminIdentity(),
     });
     expect(usageAfterSingle.statusCode).toBe(200);
     expect(usageAfterSingle.json()).toMatchObject({
@@ -174,6 +178,7 @@ describe('productization SaaS/API routes', () => {
     const usageAfterBatch = await app.inject({
       method: 'GET',
       url: '/api/product/tenants/tenant_saas/usage',
+      headers: superAdminIdentity(),
     });
     expect(usageAfterBatch.json()).toMatchObject({
       tenant: {
@@ -185,6 +190,7 @@ describe('productization SaaS/API routes', () => {
     const deliveriesResponse = await app.inject({
       method: 'GET',
       url: '/api/product/tenants/tenant_saas/webhook-deliveries',
+      headers: superAdminIdentity(),
     });
     expect(deliveriesResponse.statusCode).toBe(200);
     expect(deliveriesResponse.json<{ items: Array<{ event: string; status: string }> }>().items).toEqual(
@@ -197,6 +203,7 @@ describe('productization SaaS/API routes', () => {
     const csvResponse = await app.inject({
       method: 'GET',
       url: `/api/audit/runs/${audit.auditId}/export?tenantId=tenant_saas&format=csv`,
+      headers: superAdminIdentity(),
     });
     expect(csvResponse.statusCode).toBe(200);
     expect(csvResponse.headers['content-type']).toContain('text/csv');
@@ -206,6 +213,7 @@ describe('productization SaaS/API routes', () => {
     const pdfResponse = await app.inject({
       method: 'GET',
       url: `/api/audit/runs/${audit.auditId}/export?tenantId=tenant_saas&format=pdf`,
+      headers: superAdminIdentity(),
     });
     expect(pdfResponse.statusCode).toBe(200);
     expect(pdfResponse.headers['content-type']).toContain('application/pdf');
@@ -235,6 +243,7 @@ describe('productization SaaS/API routes', () => {
     const keyResponse = await app.inject({
       method: 'POST',
       url: '/api/product/tenants/tenant_key_owner/api-keys',
+      headers: superAdminIdentity(),
       payload: {
         name: 'Owner key',
       },

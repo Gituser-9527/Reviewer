@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../app.js';
+import { superAdminIdentity } from '../test-helpers/auth.js';
 
 describe('UAT acceptance API routes', () => {
   let app: FastifyInstance | undefined;
@@ -16,6 +17,7 @@ describe('UAT acceptance API routes', () => {
     const blockedReportResponse = await app.inject({
       method: 'POST',
       url: '/api/uat/reports',
+      headers: superAdminIdentity(),
       payload: {
         generatedBy: 'uat_tester',
         checks: [
@@ -40,6 +42,7 @@ describe('UAT acceptance API routes', () => {
     const blockedApproval = await app.inject({
       method: 'POST',
       url: `/api/uat/reports/${blockedReport.id}/approve-beta`,
+      headers: superAdminIdentity(),
       payload: {
         tenantId: 'tenant_uat',
         startDate: '2026-06-26',
@@ -52,6 +55,7 @@ describe('UAT acceptance API routes', () => {
     const goReportResponse = await app.inject({
       method: 'POST',
       url: '/api/uat/reports',
+      headers: superAdminIdentity(),
       payload: {
         generatedBy: 'uat_tester',
       },
@@ -72,6 +76,7 @@ describe('UAT acceptance API routes', () => {
     const approvalResponse = await app.inject({
       method: 'POST',
       url: `/api/uat/reports/${goReport.id}/approve-beta`,
+      headers: superAdminIdentity(),
       payload: {
         tenantId: 'tenant_uat',
         name: 'UAT 通过 Beta',
@@ -92,6 +97,7 @@ describe('UAT acceptance API routes', () => {
     const betaProgramsResponse = await app.inject({
       method: 'GET',
       url: '/api/beta-programs?tenantId=tenant_uat',
+      headers: superAdminIdentity(),
     });
     expect(betaProgramsResponse.statusCode).toBe(200);
     expect(

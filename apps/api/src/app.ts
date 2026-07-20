@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { PostgresAuditRunRepository, PostgresEvalRepository } from '@job-compliance/database';
+import { PostgresAuditRunRepository, PostgresEvalRepository, PostgresLLMPersistenceRepository } from '@job-compliance/database';
 import type { HealthResponse } from '@job-compliance/shared';
 import { ZodError } from 'zod';
 import { DatabaseAuditRunStore } from './audit/database-store.js';
@@ -47,6 +47,9 @@ import { registerTrainingRoutes } from './training/routes.js';
 import { TrainingService } from './training/service.js';
 import { registerUatRoutes } from './uat/routes.js';
 import { UatAcceptanceService } from './uat/service.js';
+import { SecretEncryptionService } from '@job-compliance/core';
+import { registerSettingsRoutes } from './settings/routes.js';
+import { LLMSettingsService, PostgresLLMSettingsService, type SettingsServicePort } from './settings/service.js';
 
 const serviceName = 'job-compliance-api';
 
@@ -108,6 +111,13 @@ export interface BuildAppOptions {
   incidentResponseService?: IncidentResponseService;
   /** Optional UAT acceptance service used by tests or future persistence adapters. */
   uatAcceptanceService?: UatAcceptanceService;
+  /** Tenant BYOK configuration service. */
+  llmSettingsService?: SettingsServicePort;
+  /** Optional persisted enrichment reader used by API integration tests. */
+  observabilityRepository?: Pick<
+    PostgresLLMPersistenceRepository,
+    'saveTrace' | 'findTrace' | 'listUsage' | 'enqueue' | 'listEnrichment'
+  >;
 }
 
 interface DefaultStores {
@@ -150,6 +160,29 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
     logger: process.env.NODE_ENV === 'test' ? false : { level: process.env.LOG_LEVEL ?? 'info' },
     disableRequestLogging: true,
+  });
+  app.addHook('onRequest', async (request, reply) => {
+    const origin = typeof request.headers.origin === 'string' ? request.headers.origin : undefined;
+    const enabled = (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') && process.env.DEV_EXTENSION_AUTH_ENABLED === 'true';
+    const allowed = (process.env.DEV_EXTENSION_ORIGINS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => /^chrome-extension:\/\/[a-p]{32}$/u.test(value));
+    if (!origin) return;
+    if (!enabled || !allowed.includes(origin)) return reply.code(403).send({ error: { code: 'ORIGIN_FORBIDDEN', message: 'Origin is not allowed.', retryable: false } });
+    if (request.method === 'OPTIONS') {
+      const requestedMethod = request.headers['access-control-request-method'];
+      const requestedHeaders = typeof request.headers['access-control-request-headers'] === 'string'
+        ? request.headers['access-control-request-headers'].split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)
+        : [];
+      const allowedMethods = ['GET', 'POST'];
+      const allowedHeaders = ['authorization', 'content-type', 'x-tenant-id'];
+      if (typeof requestedMethod !== 'string' || !allowedMethods.includes(requestedMethod.toUpperCase()) || requestedHeaders.some((header) => !allowedHeaders.includes(header))) {
+        return reply.code(403).send({ error: { code: 'CORS_REQUEST_FORBIDDEN', message: 'CORS request is not allowed.', retryable: false } });
+      }
+    }
+    reply.header('Access-Control-Allow-Origin', origin).header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS').header('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-tenant-id').header('Vary', 'Origin');
+    if (request.method === 'OPTIONS') return reply.code(204).send();
   });
   let auditRunStore: AuditRunStore;
   let reviewStore: HumanReviewStore;
@@ -209,6 +242,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       evalStore,
       runtimeServices,
     });
+  const persistenceRepository = process.env.DATABASE_URL?.trim() ? new PostgresLLMPersistenceRepository(process.env.DATABASE_URL) : undefined;
+  const observabilityRepository = options.observabilityRepository ?? persistenceRepository;
+  const llmSettingsService = options.llmSettingsService ?? (() => {
+    if (process.env.DATABASE_URL?.trim()) {
+      if (!process.env.LLM_SECRET_ENCRYPTION_KEY) throw new Error('LLM_SECRET_ENCRYPTION_KEY is required when DATABASE_URL is configured.');
+      return new PostgresLLMSettingsService(persistenceRepository!, SecretEncryptionService.fromEnv());
+    }
+    return new LLMSettingsService(process.env.LLM_SECRET_ENCRYPTION_KEY ? SecretEncryptionService.fromEnv() : undefined);
+  })();
 
   registerOperationalLogging(app);
 
@@ -242,7 +284,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
 
     if (error instanceof AuthorizationError) {
-      return reply.code(403).send({
+      return reply.code(error.code === 'AUTHENTICATION_REQUIRED' ? 401 : 403).send({
         requestId: request.id,
         error: {
           code: error.code,
@@ -312,6 +354,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get('/metrics', async (_request, reply) => sendMetrics(reply));
 
   registerAuthRoutes(app, authServices);
+  registerSettingsRoutes(app, llmSettingsService, authServices);
 
   registerAuditRoutes(app, {
     store: auditRunStore,
@@ -322,6 +365,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     productService,
     performanceServices,
     incidentResponseService,
+    ...(observabilityRepository === undefined ? {} : { observabilityRepository }),
     ...(options.auditJob === undefined ? {} : { auditJob: options.auditJob }),
   });
 

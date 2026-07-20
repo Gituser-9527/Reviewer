@@ -40,6 +40,8 @@ export interface OpenAICompatibleProviderConfig {
   model?: string;
   /** Optional fetch implementation for tests. */
   fetch?: typeof fetch;
+  /** Maximum retries for transient 429/5xx failures. */
+  maxRetries?: number;
 }
 
 /** OpenAI-compatible provider placeholder for future real model integration. */
@@ -49,12 +51,14 @@ export class OpenAICompatibleProvider implements LLMProvider {
   private readonly baseURL: string;
   private readonly apiKey: string | undefined;
   private readonly fetchImpl: typeof fetch;
+  private readonly maxRetries: number;
 
   constructor(config: OpenAICompatibleProviderConfig = {}) {
     this.baseURL = config.baseURL ?? 'https://api.openai.com/v1';
     this.apiKey = config.apiKey;
     this.model = config.model ?? 'gpt-4.1-mini';
     this.fetchImpl = config.fetch ?? fetch;
+    this.maxRetries = Math.max(0, config.maxRetries ?? 1);
   }
 
   /** Builds a provider from environment variables without requiring them at import time. */
@@ -89,7 +93,9 @@ export class OpenAICompatibleProvider implements LLMProvider {
     return runWithTimeout(
       resolved.timeoutMs ?? 1,
       async (signal) => {
-        const response = await this.fetchImpl(endpoint, {
+        let response: Response | undefined;
+        for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
+          response = await this.fetchImpl(endpoint, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
@@ -104,14 +110,17 @@ export class OpenAICompatibleProvider implements LLMProvider {
               ? { response_format: { type: 'json_object' } }
               : {}),
           }),
-          signal,
-        });
+            signal,
+          });
+          if (response.ok || ![429, 500, 502, 503, 504].includes(response.status) || attempt === this.maxRetries) break;
+        }
+        if (!response) throw new LLMProviderError('LLM_CALL_FAILED', 'Provider request did not start.', true);
 
         if (!response.ok) {
           throw new LLMProviderError(
-            'LLM_HTTP_ERROR',
+            response.status === 401 || response.status === 403 ? 'LLM_AUTH_FAILED' : response.status === 429 ? 'LLM_RATE_LIMITED' : 'LLM_HTTP_ERROR',
             `OpenAI-compatible provider returned HTTP ${response.status}.`,
-            response.status >= 500,
+            response.status === 429 || response.status >= 500,
           );
         }
 

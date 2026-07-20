@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, complianceManagerIdentity, reviewerIdentity } from '../test-helpers/auth.js';
 import { BetaTrialService } from './service.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
@@ -98,6 +99,7 @@ describe('beta trial routes', () => {
     const shadowModeResponse = await app.inject({
       method: 'PATCH',
       url: '/api/beta-trial/tenant-modes/tenant_shadow',
+      headers: complianceManagerIdentity('tenant_shadow'),
       payload: {
         mode: 'shadow_mode',
         enabled: true,
@@ -113,6 +115,7 @@ describe('beta trial routes', () => {
     const enforceModeResponse = await app.inject({
       method: 'PATCH',
       url: '/api/beta-trial/tenant-modes/tenant_enforce',
+      headers: complianceManagerIdentity('tenant_enforce'),
       payload: {
         mode: 'enforce_mode',
         enabled: true,
@@ -124,15 +127,17 @@ describe('beta trial routes', () => {
     await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_shadow'),
       payload: auditRequest('tenant_shadow'),
     });
     await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_enforce'),
       payload: auditRequest('tenant_enforce'),
     });
 
-    const runsResponse = await app.inject({ method: 'GET', url: '/api/beta-trial/runs' });
+    const runsResponse = await app.inject({ method: 'GET', url: '/api/beta-trial/runs', headers: reviewerIdentity('tenant_shadow') });
     expect(runsResponse.statusCode).toBe(200);
     const runs = runsResponse.json<{ items: Array<{ id: string; tenantId: string; businessImpactApplied: boolean }> }>().items;
     const shadowRun = runs.find((run) => run.tenantId === 'tenant_shadow');
@@ -144,6 +149,7 @@ describe('beta trial routes', () => {
     const humanResultResponse = await app.inject({
       method: 'POST',
       url: `/api/beta-trial/runs/${shadowRun?.id}/human-result`,
+      headers: reviewerIdentity('tenant_shadow'),
       payload: {
         reviewerId: 'human_001',
         finalDecision: 'REJECT',
@@ -160,6 +166,7 @@ describe('beta trial routes', () => {
     const reportResponse = await app.inject({
       method: 'GET',
       url: '/api/beta-trial/reports/daily?tenantId=tenant_shadow',
+      headers: reviewerIdentity('tenant_shadow'),
     });
     expect(reportResponse.statusCode).toBe(200);
     expect(reportResponse.json()).toMatchObject({
@@ -170,10 +177,7 @@ describe('beta trial routes', () => {
     });
     expect(reportResponse.json<{ mismatchSamples: unknown[] }>().mismatchSamples).toHaveLength(1);
 
-    const mismatchResponse = await app.inject({
-      method: 'GET',
-      url: '/api/beta-trial/runs?mismatchOnly=true',
-    });
+    const mismatchResponse = await app.inject({ method: 'GET', url: '/api/beta-trial/runs?mismatchOnly=true', headers: reviewerIdentity('tenant_shadow') });
     expect(mismatchResponse.statusCode).toBe(200);
     expect(mismatchResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
   });

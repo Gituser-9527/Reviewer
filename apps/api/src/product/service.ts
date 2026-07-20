@@ -424,7 +424,8 @@ export class ProductService {
     if (typeof xApiKey === 'string' && xApiKey.trim().length > 0) return xApiKey.trim();
     const authorization = headers.authorization;
     if (typeof authorization === 'string' && authorization.startsWith('Bearer ')) {
-      return authorization.slice('Bearer '.length).trim();
+      const token = authorization.slice('Bearer '.length).trim();
+      return token.startsWith('jca_') ? token : undefined;
     }
     return undefined;
   }

@@ -8,3 +8,9 @@ node_modules/
 *.log
 *.tsbuildinfo
 .DS_Store
+apps/extension/dist/
+.browser-profile/
+.tmp-extension-profile/
+playwright-report/
+test-results/
+blob-report/

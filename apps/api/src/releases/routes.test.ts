@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { createAuthServices } from '../auth/service.js';
+import { complianceManagerIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 import { createRuntimeServices } from '../runtime/services.js';
 import { ReleaseQualityGateService, type CommandRunner } from './service.js';
 
@@ -47,6 +48,7 @@ describe('release quality gate API routes', () => {
     const candidateResponse = await app.inject({
       method: 'POST',
       url: '/api/releases/candidates',
+      headers: superAdminIdentity(),
       payload: {
         name: 'Rules 2.0.0',
         target: 'ruleVersion',
@@ -60,6 +62,7 @@ describe('release quality gate API routes', () => {
     const failedGateResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/run-gates`,
+      headers: superAdminIdentity(),
     });
     expect(failedGateResponse.statusCode).toBe(200);
     expect(failedGateResponse.json()).toMatchObject({ status: 'failed' });
@@ -67,6 +70,7 @@ describe('release quality gate API routes', () => {
     const blockedPublishResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/publish`,
+      headers: superAdminIdentity(),
       payload: {},
     });
     expect(blockedPublishResponse.statusCode).toBe(422);
@@ -77,6 +81,7 @@ describe('release quality gate API routes', () => {
     const approvalResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/approve`,
+      headers: superAdminIdentity(),
       payload: { approvedBy: 'compliance_manager_001' },
     });
     expect(approvalResponse.statusCode).toBe(200);
@@ -84,6 +89,7 @@ describe('release quality gate API routes', () => {
     const passedGateResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/run-gates`,
+      headers: superAdminIdentity(),
     });
     expect(passedGateResponse.statusCode).toBe(200);
     expect(passedGateResponse.json()).toMatchObject({ status: 'passed' });
@@ -91,6 +97,7 @@ describe('release quality gate API routes', () => {
     const publishResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/publish`,
+      headers: complianceManagerIdentity(),
       payload: {},
     });
     expect(publishResponse.statusCode).toBe(200);
@@ -121,6 +128,7 @@ describe('release quality gate API routes', () => {
     const candidateResponse = await app.inject({
       method: 'POST',
       url: '/api/releases/candidates',
+      headers: superAdminIdentity(),
       payload: {
         name: 'Model config canary',
         target: 'modelVersion',
@@ -136,21 +144,20 @@ describe('release quality gate API routes', () => {
     await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/approve`,
+      headers: complianceManagerIdentity(),
       payload: { approvedBy: 'compliance_manager_001' },
     });
     const gateResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/run-gates`,
+      headers: superAdminIdentity(),
     });
     expect(gateResponse.json()).toMatchObject({ status: 'failed' });
 
     const forcedPublishResponse = await app.inject({
       method: 'POST',
       url: `/api/releases/candidates/${candidate.id}/publish`,
-      headers: {
-        'x-user-id': 'manager_001',
-        'x-user-role': 'COMPLIANCE_MANAGER',
-      },
+      headers: complianceManagerIdentity(),
       payload: { forcePublish: true },
     });
     expect(forcedPublishResponse.statusCode).toBe(200);
@@ -159,6 +166,7 @@ describe('release quality gate API routes', () => {
     const logsResponse = await app.inject({
       method: 'GET',
       url: '/api/audit-operation-logs',
+      headers: superAdminIdentity(),
     });
     expect(logsResponse.statusCode).toBe(200);
     expect(logsResponse.json<{ items: Array<{ operation: string }> }>().items).toEqual(

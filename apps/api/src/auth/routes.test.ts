@@ -6,6 +6,7 @@ import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
 import { FileRuleManagementStore } from '../rules/store.js';
 import { createAuthServices } from './service.js';
+import { auditOperatorIdentity } from '../test-helpers/auth.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
 const tempDirs: string[] = [];
@@ -73,6 +74,7 @@ describe('auth, tenant isolation and audit operation logs', () => {
     await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_a'),
       payload: requestForTenant('tenant_a'),
     });
 

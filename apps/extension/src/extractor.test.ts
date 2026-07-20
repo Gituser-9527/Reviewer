@@ -1,0 +1,3 @@
+import { describe,expect,it } from 'vitest';
+import { extractJsonLd } from './extractor.js';
+describe('job JSON-LD extraction',()=>{it('extracts objects, arrays, and graphs while ignoring malformed JSON',()=>{const job=extractJsonLd(['{bad','[{"@type":"JobPosting","title":"招聘专员","description":"岗位描述","qualifications":"熟悉流程"}]',JSON.stringify({'@graph':[{'@type':'JobPosting',title:'ignored',description:'ignored'}]})]);expect(job).toMatchObject({title:'招聘专员',description:'岗位描述',requirements:['熟悉流程']});});it('does not return HTML or scripts',()=>expect(extractJsonLd(['{"@type":"WebPage","name":"x"}'])).toBeUndefined());});

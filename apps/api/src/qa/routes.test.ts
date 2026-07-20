@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AuditResult } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
+import { auditOperatorIdentity, reviewerIdentity, superAdminIdentity } from '../test-helpers/auth.js';
 import type { QaInspectionJob, QaQualityIssue } from './service.js';
 
 const apps = [] as ReturnType<typeof buildApp>[];
@@ -82,6 +83,7 @@ describe('QA inspection API routes', () => {
     const auditResponse = await app.inject({
       method: 'POST',
       url: '/api/audit/job',
+      headers: auditOperatorIdentity('tenant_qa_001'),
       payload: auditRequest,
     });
     expect(auditResponse.statusCode).toBe(201);
@@ -89,6 +91,7 @@ describe('QA inspection API routes', () => {
     const reviewResponse = await app.inject({
       method: 'POST',
       url: '/api/reviews/audit_qa_001/decision',
+      headers: reviewerIdentity('tenant_qa_001'),
       payload: {
         reviewerId: 'reviewer_qa_001',
         finalDecision: 'REQUEST_REVISION',
@@ -103,6 +106,7 @@ describe('QA inspection API routes', () => {
     const createJobResponse = await app.inject({
       method: 'POST',
       url: '/api/qa/inspection-jobs',
+      headers: reviewerIdentity('tenant_qa_001'),
       payload: {
         tenantId: 'tenant_qa_001',
         strategy: 'high_risk_first',
@@ -125,6 +129,7 @@ describe('QA inspection API routes', () => {
     const detailResponse = await app.inject({
       method: 'GET',
       url: `/api/qa/inspection-jobs/${job.id}`,
+      headers: reviewerIdentity('tenant_qa_001'),
     });
     expect(detailResponse.statusCode).toBe(200);
     expect(detailResponse.json()).toMatchObject({
@@ -136,6 +141,7 @@ describe('QA inspection API routes', () => {
     const issueListResponse = await app.inject({
       method: 'GET',
       url: '/api/qa/issues?tenantId=tenant_qa_001&status=open',
+      headers: reviewerIdentity('tenant_qa_001'),
     });
     const issues = issueListResponse.json<{ items: QaQualityIssue[] }>().items;
     const auditIssue = issues.find((issue) => issue.sourceType === 'audit_run');
@@ -150,6 +156,7 @@ describe('QA inspection API routes', () => {
     const resolveResponse = await app.inject({
       method: 'POST',
       url: `/api/qa/issues/${auditIssue?.id}/resolve`,
+      headers: superAdminIdentity(),
       payload: {
         resolvedBy: 'qa_manager_001',
         resolutionComment: '已沉淀为回归样本，并生成规则改进建议。',
@@ -168,6 +175,7 @@ describe('QA inspection API routes', () => {
     const evalCasesResponse = await app.inject({
       method: 'GET',
       url: '/api/evals/datasets/qa_failed_samples_test/cases',
+      headers: superAdminIdentity(),
     });
     expect(evalCasesResponse.statusCode).toBe(200);
     expect(evalCasesResponse.json<{ items: unknown[] }>().items).toHaveLength(1);
@@ -175,6 +183,7 @@ describe('QA inspection API routes', () => {
     const suggestionsResponse = await app.inject({
       method: 'GET',
       url: '/api/rule-suggestions?tenantId=tenant_qa_001&status=open',
+      headers: reviewerIdentity('tenant_qa_001'),
     });
     expect(suggestionsResponse.statusCode).toBe(200);
     expect(suggestionsResponse.json<{ items: unknown[] }>().items).toHaveLength(1);

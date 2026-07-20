@@ -270,6 +270,9 @@ export default function HomePage() {
           <a className="text-link" href="/monitoring">
             监控灰度
           </a>
+          <a className="text-link" href="/settings">
+            模型配置
+          </a>
           <a className="text-link" href="/beta-trial">
             封闭试运行
           </a>
