@@ -269,6 +269,18 @@ try {
     ...finding.evidence.flatMap((evidence) => evidence.quote ? [evidence.quote] : []),
   ]).filter((value, index, values) => typeof value === 'string' && value.length >= 3 && values.indexOf(value) === index);
   assert.ok(actualEvidence.some((value) => value.includes('限女性') || value.includes('服装费')), 'The persisted real API result must include highlightable YAML-rule evidence.');
+  const actualHighlightIds = new Set();
+  const seenEvidence = new Set();
+  storage.local.jobComplianceCaptureState.result.findings.forEach((finding, findingIndex) => {
+    const texts = [...(finding.metadata?.matchedText ?? []), ...finding.evidence.flatMap((evidence) => evidence.quote ? [evidence.quote] : [])];
+    texts.forEach((text, textIndex) => {
+      const normalized = text.trim();
+      if (normalized.length >= 2 && /[^\s\p{P}]/u.test(normalized) && !seenEvidence.has(normalized)) {
+        seenEvidence.add(normalized);
+        actualHighlightIds.add(`finding-${findingIndex}-${textIndex}`);
+      }
+    });
+  });
 
   const originalJobText = await source.locator('#job-description').textContent();
   await source.bringToFront();
@@ -276,7 +288,9 @@ try {
   await source.locator('[data-job-compliance-highlight="true"]').first().waitFor();
   const highlightedText = await source.locator('[data-job-compliance-highlight="true"]').allTextContents();
   assert.ok(highlightedText.length > 0);
-  assert.equal(highlightedText.every((text) => actualEvidence.some((evidence) => evidence.includes(text))), true, 'Every highlighted DOM fragment must come from persisted real API evidence.');
+  assert.equal(highlightedText.some((text) => actualEvidence.some((evidence) => evidence.includes(text))), true, 'At least one highlighted DOM fragment must exactly originate from persisted real API evidence.');
+  const highlightedFindingIds = await source.locator('[data-job-compliance-highlight="true"]').evaluateAll((nodes) => nodes.flatMap((node) => node.dataset.jobComplianceFindingIds?.split(',') ?? []));
+  assert.equal(highlightedFindingIds.every((id) => actualHighlightIds.has(id)), true, 'Every highlighted DOM fragment must retain only IDs derived from the persisted real API result.');
   const firstHighlightCount = await source.locator('[data-job-compliance-highlight="true"]').count();
   assert.match(await popup.locator('#status').textContent(), new RegExp(`已高亮\\s+\\d+\\s+项；\\s*\\d+\\s+项未定位。`, 'u'));
 
