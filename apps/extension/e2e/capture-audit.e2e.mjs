@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 const extensionPath = resolve('apps/extension');
 const profile = await mkdtemp(resolve(tmpdir(), 'job-compliance-extension-'));
 const requests = [];
-const fixture = `<!doctype html><title>脱敏招聘 Fixture</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"行政专员","description":"负责行政支持。限女性，已婚已育优先。","hiringOrganization":{"name":"示例科技有限公司"},"jobLocation":{"address":"北京"},"baseSalary":{"value":"8k-15k"},"employmentType":"FULL_TIME","qualifications":"熟悉行政流程"}</script><main><h1>行政专员</h1></main>`;
+const fixture = `<!doctype html><title>脱敏招聘 Fixture</title><script>const ignored='限女性';</script><script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"行政专员","description":"负责行政支持。限女性，已婚已育优先。","hiringOrganization":{"name":"示例科技有限公司"},"jobLocation":{"address":"北京"},"baseSalary":{"value":"8k-15k"},"employmentType":"FULL_TIME","qualifications":"熟悉行政流程"}</script><main><h1>行政专员</h1><p id="job-description">负责行政支持。限<span>女性</span>，已婚已育优先。</p><p hidden>限女性</p><p aria-hidden="true">限女性</p><p style="display:none">限女性</p><input value="限女性"><mark id="site-mark">网站自身标记</mark></main>`;
 const server = createServer(async (request, response) => {
   if (request.url === '/fixture') { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); response.end(fixture); return; }
   if (request.url === '/api/audit/job' && request.method === 'POST') {
@@ -45,6 +45,18 @@ try {
   assert.match(await popup.locator('#decision').textContent(), /MANUAL_REVIEW/);
   assert.match(await popup.locator('#findings').textContent(), /限女性/);
   assert.equal(requests.length, 1);
+  await source.bringToFront(); await popup.locator('#highlight').click();
+  await source.locator('[data-job-compliance-highlight="true"]').first().waitFor();
+  assert.equal(await source.locator('[data-job-compliance-highlight="true"]').count(), 2);
+  assert.equal(await source.locator('[hidden] [data-job-compliance-highlight="true"], [aria-hidden="true"] [data-job-compliance-highlight="true"], [style*="display:none"] [data-job-compliance-highlight="true"]').count(), 0);
+  assert.equal(await source.locator('#job-description').textContent(), '负责行政支持。限女性，已婚已育优先。');
+  assert.equal(await source.locator('input').inputValue(), '限女性');
+  assert.equal(await source.locator('#site-mark').textContent(), '网站自身标记');
+  await popup.locator('#highlight').dblclick();
+  assert.equal(await source.locator('[data-job-compliance-highlight="true"] [data-job-compliance-highlight="true"]').count(), 0);
+  await popup.locator('#clearHighlights').click();
+  assert.equal(await source.locator('[data-job-compliance-highlight="true"]').count(), 0);
+  assert.equal(await source.locator('#job-description').textContent(), '负责行政支持。限女性，已婚已育优先。');
   await popup.close();
   const restored = await context.newPage(); await restored.goto(`chrome-extension://${extensionId}/popup.html`); await restored.locator('#result').waitFor({ state:'visible' });
   assert.match(await restored.locator('#decision').textContent(), /MANUAL_REVIEW/);
