@@ -6,5 +6,8 @@
   "action": { "default_popup": "popup.html", "default_title": "提取当前岗位" },
   "background": { "service_worker": "dist/background.js", "type": "module" },
   "permissions": ["activeTab", "storage", "tabs"],
-  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["dist/content.js"], "css": ["content.css"], "run_at": "document_idle" }]
+  "content_scripts": [
+    { "matches": ["http://*/*", "https://*/*"], "js": ["dist/history-bridge.js"], "world": "MAIN", "run_at": "document_start" },
+    { "matches": ["http://*/*", "https://*/*"], "js": ["dist/content.js"], "css": ["content.css"], "run_at": "document_idle" }
+  ]
 }
