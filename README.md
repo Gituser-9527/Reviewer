@@ -98,6 +98,8 @@ npm run db:migrate    # 使用 DATABASE_URL 执行 PostgreSQL migration
 
 ## 当前边界
 
+受控内部浏览器扩展试用的安装、操作、安全边界和反馈入口见 [docs/internal-alpha/README.md](./docs/internal-alpha/README.md)。它不是公开生产发布说明。
+
 已经具备：
 
 - npm workspace monorepo

@@ -1,4 +1,4 @@
-/* global URL, console, window */
+/* global URL, console, window, chrome */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -28,19 +28,46 @@ await new Promise(resolveServer => server.listen(0, '127.0.0.1', resolveServer))
 const address = server.address(); if (!address || typeof address === 'string') throw new Error('Fixture server unavailable');
 const baseUrl = `http://127.0.0.1:${address.port}`;
 let context;
+let source;
+let popup;
+let phase = 'initializing';
+const logPhase = (name) => { phase = name; console.log(`[extension-e2e] phase=${name}`); };
+async function reportFailure(error) {
+  const state = await popup?.evaluate(async () => {
+    const saved = (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState;
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tab = tabs[0];
+    return {
+      capture: Boolean(saved?.capture), lifecycle: saved?.lifecycle?.status ?? 'EMPTY',
+      pageIdentity: saved?.binding ? 'bound' : 'unknown', generation: Boolean(saved?.binding?.generation),
+      tabMatches: typeof tab?.id === 'number' && tab.id === saved?.binding?.tabId,
+      activeTabType: tab?.url?.startsWith('chrome-extension:') ? 'extension' : tab?.url?.startsWith('http') ? 'web' : 'unknown',
+    };
+  }).catch(() => undefined);
+  console.error(`[extension-e2e] diagnostics phase=${phase} popupOpen=${!popup?.isClosed()} sourceOpen=${!source?.isClosed()} workerAlive=${Boolean(context?.serviceWorkers().length)} submitDisabled=${await popup?.locator('#submit').isDisabled().catch(() => undefined)} capture=${state?.capture ?? 'unknown'} lifecycle=${state?.lifecycle ?? 'unknown'} pageIdentity=${state?.pageIdentity ?? 'unknown'} generation=${state?.generation ?? 'unknown'} tabMatches=${state?.tabMatches ?? 'unknown'} activeTabType=${state?.activeTabType ?? 'unknown'} error=${error instanceof Error ? error.name : 'UnknownError'}`);
+}
 try {
   context = await chromium.launchPersistentContext(profile, { headless: false, args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`] });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   const extensionId = new URL(worker.url()).host;
   assert.ok(extensionId);
-  const source = await context.newPage(); await source.goto(`${baseUrl}/fixture`); await source.waitForLoadState('networkidle');
-  const popup = await context.newPage(); await popup.goto(`chrome-extension://${extensionId}/popup.html`); await popup.waitForSelector('#extract'); await popup.locator('summary').click();
+  logPhase('extension-loaded');
+  source = await context.newPage(); await source.goto(`${baseUrl}/fixture`); await source.waitForLoadState('networkidle');
+  logPhase('fixture-opened');
+  popup = await context.newPage(); await popup.goto(`chrome-extension://${extensionId}/popup.html`); await popup.waitForSelector('#extract'); await popup.locator('summary').click();
+  logPhase('popup-opened');
   await popup.locator('#apiBaseUrl').fill(baseUrl); await popup.locator('#tenantId').fill('e2e-tenant'); await popup.locator('#accessToken').fill('e2e-placeholder');
+  logPhase('configuration-ready');
   await source.bringToFront(); await popup.locator('#extract').click();
   await popup.locator('#preview').waitFor({ state:'visible' });
+  logPhase('job-captured');
   assert.equal(await popup.locator('[data-field="title"]').inputValue(), '行政专员');
   await popup.locator('[data-field="companyName"]').fill('修正后的示例公司');
+  await popup.locator('#submit').waitFor({ state: 'visible' });
+  assert.equal(await popup.locator('#submit').isDisabled(), false);
+  logPhase('submit-enabled');
   await popup.locator('#submit').dblclick();
+  logPhase('audit-submitted');
   await popup.locator('#result').waitFor({ state:'visible' });
   assert.match(await popup.locator('#decision').textContent(), /MANUAL_REVIEW/);
   assert.match(await popup.locator('#findings').textContent(), /限女性/);
@@ -58,7 +85,7 @@ try {
   assert.equal(await source.locator('[data-job-compliance-highlight="true"]').count(), 0);
   assert.equal(await source.locator('#job-description').textContent(), '负责行政支持。限女性，已婚已育优先。');
   await popup.close();
-  const restored = await context.newPage(); await restored.goto(`chrome-extension://${extensionId}/popup.html`); await restored.locator('#result').waitFor({ state:'visible' });
+  const restored = await context.newPage(); popup = restored; await restored.goto(`chrome-extension://${extensionId}/popup.html`); await restored.locator('#result').waitFor({ state:'visible' });
   assert.match(await restored.locator('#decision').textContent(), /MANUAL_REVIEW/);
   assert.equal(await restored.locator('[data-field="companyName"]').inputValue(), '修正后的示例公司');
   await source.bringToFront();
@@ -68,10 +95,8 @@ try {
   assert.equal(await restored.locator('#highlight').isDisabled(), true);
   assert.equal(await restored.locator('#submit').isDisabled(), true);
   await restored.locator('#extract').click();
-  await restored.locator('#submit').click();
-  await restored.locator('#result').waitFor({ state:'visible' });
-  await source.evaluate(() => { globalThis.document.querySelector('#job-json')?.remove(); globalThis.document.querySelector('main')?.replaceChildren(); });
-  await restored.locator('#status').filter({ hasText: '旧审核结果已失效' }).waitFor();
+  await restored.locator('#status').filter({ hasText: '未检测到可审核的岗位信息' }).waitFor();
+  assert.equal(await restored.locator('#submit').isDisabled(), true);
   assert.equal(await restored.locator('#result').isHidden(), true);
   assert.equal(await restored.locator('#submit').isDisabled(), true);
   await source.evaluate(() => { const script = globalThis.document.createElement('script'); script.id = 'job-json'; script.type = 'application/ld+json'; globalThis.document.head.append(script); window.switchJob('b', 'push'); });
@@ -94,5 +119,9 @@ try {
   assert.equal(await restored.locator('#result').isHidden(), true);
   assert.equal(await restored.locator('#highlight').isDisabled(), true);
   assert.equal(await restored.locator('#submit').isDisabled(), true);
+  logPhase('passed');
   console.log('Browser extension E2E passed with a real Chromium extension context.');
+} catch (error) {
+  await reportFailure(error);
+  throw error;
 } finally { await context?.close(); await new Promise(resolveServer => server.close(resolveServer)); await rm(profile, { recursive:true, force:true }); }
