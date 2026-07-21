@@ -7,7 +7,8 @@ import { URL } from 'node:url';
 const minimumNode = [20, 9, 0];
 
 export function parseVersion(value) {
-  const match = /^(?:v)?(\d+)\.(\d+)\.(\d+)/u.exec(value ?? '');
+  if (typeof value !== 'string') return undefined;
+  const match = /^v?(\d+)\.(\d+)\.(\d+)$/u.exec(value.trim());
   return match ? match.slice(1).map(Number) : undefined;
 }
 
@@ -40,12 +41,14 @@ export function createDoctor(options = {}) {
   const present = (name) => Boolean(env[name]?.trim());
   const file = (...parts) => join(cwd, ...parts);
 
-  add(atLeast(parseVersion(nodeVersion), minimumNode) ? 'PASS' : 'FAIL', 'Node.js', `detected ${nodeVersion}; requires >=20.9.0`);
+  const parsedNodeVersion = parseVersion(nodeVersion);
+  add(atLeast(parsedNodeVersion, minimumNode) ? 'PASS' : 'FAIL', 'Node.js', atLeast(parsedNodeVersion, minimumNode) ? `detected ${nodeVersion.trim()}; requires >=20.9.0` : 'requires a stable version >=20.9.0');
   try {
     const npmVersion = options.npmVersion ?? (options.run ? run('npm', ['--version']) : process.platform === 'win32'
       ? execFileSync('cmd.exe', ['/d', '/s', '/c', 'npm --version'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       : run('npm', ['--version']));
-    add(atLeast(parseVersion(npmVersion), [10, 0, 0]) ? 'PASS' : 'FAIL', 'npm', atLeast(parseVersion(npmVersion), [10, 0, 0]) ? `detected ${npmVersion}` : 'requires >=10.0.0');
+    const parsedNpmVersion = parseVersion(npmVersion);
+    add(atLeast(parsedNpmVersion, [10, 0, 0]) ? 'PASS' : 'FAIL', 'npm', atLeast(parsedNpmVersion, [10, 0, 0]) ? `detected ${npmVersion.trim()}` : 'requires a stable version >=10.0.0');
   } catch {
     add('FAIL', 'npm', 'npm is not available on PATH');
   }

@@ -18,6 +18,8 @@
 4. 试用人员按 [USER_GUIDE.md](./USER_GUIDE.md) 手动操作，并用 [TEST_PLAN.md](./TEST_PLAN.md) 记录结果。
 5. 问题使用 [FEEDBACK_TEMPLATE.md](./FEEDBACK_TEMPLATE.md)；出现停止条件立即停止试用并通知维护人员。
 
+Doctor 仅检查本地版本、文件、Manifest、URL 静态格式和配置变量是否存在。Doctor 通过不表示 Alpha API 已在线、数据库已连接、tenant 已创建、Token 有效或 CORS 已部署；真人 Pilot 前仍须由维护人员人工验证 health、migration、专用 tenant、最小权限凭据、精确 extension Origin 以及一次受控真实审核。
+
 ## 适用与停止
 
 启动门禁、停止条件和支持范围见 [TEST_PLAN.md](./TEST_PLAN.md)。安全数据边界见 [SECURITY_AND_DATA.md](./SECURITY_AND_DATA.md)，限制见 [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)。

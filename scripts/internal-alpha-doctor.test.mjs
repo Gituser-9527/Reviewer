@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { atLeast, createDoctor, summarize, validHttpUrl } from './internal-alpha-doctor-lib.mjs';
+import { atLeast, createDoctor, parseVersion, summarize, validHttpUrl } from './internal-alpha-doctor-lib.mjs';
 
 const files = new Set(['package.json', 'node_modules', 'apps/extension/manifest.json', 'apps/api/dist/server.js', 'apps/extension/dist']);
 const fs = { exists: (file) => files.has(file.replaceAll('\\', '/')), readFile: () => JSON.stringify({ version: '0.1.0' }) };
@@ -57,8 +57,20 @@ test('compares Node and npm versions lexicographically against repository engine
   assert.equal(atLeast([19, 99, 99], [20, 9, 0]), false);
   assert.equal(atLeast([20, 9, 0], [20, 9, 0]), true);
   assert.equal(atLeast([20, 9, 1], [20, 9, 0]), true);
+  assert.equal(atLeast([20, 10, 0], [20, 9, 0]), true);
+  assert.equal(atLeast([20, 8, 99], [20, 9, 0]), false);
+  assert.equal(atLeast([21, 0, 0], [20, 9, 0]), true);
   const outdatedNpm = doctor({ run: (command, args) => command.startsWith('npm') ? '9.99.99' : args.includes('status') ? '' : 'abc1234' });
   assert.ok(outdatedNpm.some((row) => row.name === 'npm' && row.status === 'FAIL'));
   const outdatedNode = doctor({ nodeVersion: 'v19.99.99' });
   assert.ok(outdatedNode.some((row) => row.name === 'Node.js' && row.status === 'FAIL'));
+});
+
+test('rejects incomplete, malformed, and prerelease versions without echoing them', () => {
+  for (const version of ['', undefined, '20', '20.9', '20.x.0', 'v20.9.0-rc.1', 'not-a-version']) assert.equal(parseVersion(version), undefined);
+  const secret = '20.9.0-rc.1-secret-value';
+  const rows = doctor({ nodeVersion: secret, npmVersion: 'not-a-version' });
+  assert.ok(rows.some((row) => row.name === 'Node.js' && row.status === 'FAIL'));
+  assert.ok(rows.some((row) => row.name === 'npm' && row.status === 'FAIL'));
+  assert.equal(JSON.stringify(rows).includes(secret), false);
 });
