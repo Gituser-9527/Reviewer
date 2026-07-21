@@ -13,13 +13,17 @@ export function parseVersion(value) {
 
 export function atLeast(actual, minimum) {
   if (!actual) return false;
-  return actual.some((part, index) => part !== minimum[index] && part > minimum[index]) || actual.every((part, index) => part === minimum[index]);
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (actual[index] > minimum[index]) return true;
+    if (actual[index] < minimum[index]) return false;
+  }
+  return true;
 }
 
 export function validHttpUrl(value) {
   try {
     const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
+    return (url.protocol === 'http:' || url.protocol === 'https:') && url.username === '' && url.password === '';
   } catch {
     return false;
   }
@@ -41,7 +45,7 @@ export function createDoctor(options = {}) {
     const npmVersion = options.npmVersion ?? (options.run ? run('npm', ['--version']) : process.platform === 'win32'
       ? execFileSync('cmd.exe', ['/d', '/s', '/c', 'npm --version'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       : run('npm', ['--version']));
-    add(parseVersion(npmVersion) ? 'PASS' : 'FAIL', 'npm', parseVersion(npmVersion) ? `detected ${npmVersion}` : 'version could not be parsed');
+    add(atLeast(parseVersion(npmVersion), [10, 0, 0]) ? 'PASS' : 'FAIL', 'npm', atLeast(parseVersion(npmVersion), [10, 0, 0]) ? `detected ${npmVersion}` : 'requires >=10.0.0');
   } catch {
     add('FAIL', 'npm', 'npm is not available on PATH');
   }
@@ -70,7 +74,7 @@ export function createDoctor(options = {}) {
 
   if (present('DATABASE_URL')) add(present('LLM_SECRET_ENCRYPTION_KEY') ? 'PASS' : 'FAIL', 'LLM settings encryption key', present('LLM_SECRET_ENCRYPTION_KEY') ? 'configured (value withheld)' : 'required by the API when DATABASE_URL is configured');
   const devAuth = present('DEV_EXTENSION_AUTH_ENABLED') || present('DEV_EXTENSION_AUTH_TOKEN') || present('DEV_EXTENSION_TENANT_ID') || present('DEV_EXTENSION_ORIGINS');
-  if (devAuth) add(present('DEV_EXTENSION_AUTH_ENABLED') && present('DEV_EXTENSION_AUTH_TOKEN') && present('DEV_EXTENSION_TENANT_ID') && present('DEV_EXTENSION_ORIGINS') ? 'PASS' : 'FAIL', 'development extension authentication', 'required names are checked; values are withheld');
+  if (devAuth) add(env.DEV_EXTENSION_AUTH_ENABLED === 'true' && present('DEV_EXTENSION_AUTH_TOKEN') && present('DEV_EXTENSION_TENANT_ID') && present('DEV_EXTENSION_ORIGINS') ? 'PASS' : 'FAIL', 'development extension authentication', 'required names are checked; values are withheld');
   else add('WARN', 'development extension authentication', 'not configured in this shell; obtain configuration from the designated maintainer');
 
   try {
