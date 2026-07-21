@@ -21,7 +21,7 @@ const tenantId = `extension-e2e-${randomUUID()}`;
 const otherTenantId = `extension-e2e-other-${randomUUID()}`;
 const token = `local-extension-e2e-${randomBytes(24).toString('base64url')}`;
 const encryptionKey = randomBytes(32).toString('base64');
-const fixture = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>脱敏本地岗位 Fixture</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"行政专员","description":"负责行政支持与招聘流程协调。限女性，已婚已育优先。入职需缴纳500元服装费。","hiringOrganization":{"name":"脱敏示例科技有限公司"},"jobLocation":{"address":"北京"},"baseSalary":{"value":"8k-15k"},"employmentType":"FULL_TIME","qualifications":"熟悉行政流程"}</script></head><body><main><h1>行政专员</h1><p id="job-description">负责行政支持与招聘流程协调。限<span>女性</span>，已婚已育优先。入职需缴纳500元服装费。</p><mark id="site-mark">网站自身标记</mark><input id="uneditable-risk-text" value="限女性"></main></body></html>`;
+const fixture = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>脱敏本地岗位 Fixture</title><script>const jobs={a:{title:'行政专员',description:'负责行政支持与招聘流程协调。限女性，已婚已育优先。入职需缴纳500元服装费。',company:'脱敏示例科技有限公司'},b:{title:'后端工程师',description:'负责服务端开发与稳定性建设。',company:'脱敏安全技术有限公司'}};function switchToJobB(){const job=jobs.b;document.querySelector('#job-json').textContent=JSON.stringify({'@context':'https://schema.org','@type':'JobPosting',title:job.title,description:job.description,hiringOrganization:{name:job.company},jobLocation:{address:'北京'},baseSalary:{value:'15k-25k'},employmentType:'FULL_TIME',qualifications:'熟悉服务端开发'});document.querySelector('main').innerHTML='<button id="switch-to-b" type="button" onclick="switchToJobB()">切换岗位 B</button><h1>'+job.title+'</h1><p id="job-description">'+job.description+'</p><mark id="site-mark">网站自身标记</mark>';history.pushState({},'', '/fixture?job=b')}</script><script id="job-json" type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting","title":"行政专员","description":"负责行政支持与招聘流程协调。限女性，已婚已育优先。入职需缴纳500元服装费。","hiringOrganization":{"name":"脱敏示例科技有限公司"},"jobLocation":{"address":"北京"},"baseSalary":{"value":"8k-15k"},"employmentType":"FULL_TIME","qualifications":"熟悉行政流程"}</script></head><body><main><button id="switch-to-b" type="button" onclick="switchToJobB()">切换岗位 B</button><h1>行政专员</h1><p id="job-description">负责行政支持与招聘流程协调。限<span>女性</span>，已婚已育优先。入职需缴纳500元服装费。</p><mark id="site-mark">网站自身标记</mark><input id="uneditable-risk-text" value="限女性"></main></body></html>`;
 
 function assertNoForbidden(value, forbidden) {
   if (Array.isArray(value)) {
@@ -133,6 +133,8 @@ const pool = new pg.Pool({ connectionString: databaseUrl });
 let context;
 let apiProcess;
 const apiLogs = [];
+let racePhase = 'not-started';
+const logRacePhase = (phase) => { racePhase = phase; console.log(`[extension-local-api-postgres][spa-race] phase=${phase}`); };
 
 try {
   const requiredExtensionFiles = ['manifest.json', 'popup.html', 'dist/popup.js', 'dist/background.js', 'dist/content.js'];
@@ -156,7 +158,8 @@ try {
     cwd: process.cwd(),
     env: {
       ...process.env,
-      NODE_ENV: 'development',
+      NODE_ENV: 'test',
+      TEST_AUDIT_RESPONSE_DELAY_MS: '2000',
       HOST: '127.0.0.1',
       PORT: String(apiPort),
       DATABASE_URL: databaseUrl,
@@ -346,8 +349,80 @@ try {
   assert.equal(JSON.parse(deniedRequest.body ?? '{}').tenantId, otherTenantId);
   await restored.close();
 
-  console.log('Local API PostgreSQL browser extension E2E passed with real Chromium, API, CORS, auth, and PostgreSQL.');
+  const raceSource = await context.newPage();
+  logRacePhase('fixture-opened');
+  await raceSource.goto(fixtureUrl);
+  await raceSource.waitForLoadState('networkidle');
+  const racePopup = await context.newPage();
+  await racePopup.goto(`${extensionOrigin}/popup.html`);
+  await racePopup.locator('summary').click();
+  await racePopup.locator('#apiBaseUrl').fill(apiBaseUrl);
+  await racePopup.locator('#tenantId').fill(tenantId);
+  await racePopup.locator('#accessToken').fill(token);
+  await raceSource.bringToFront();
+  await racePopup.locator('#extract').click();
+  await racePopup.locator('#preview').waitFor({ state: 'visible' });
+  logRacePhase('job-a-captured');
+  const generationA = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState.binding.generation);
+  const beforeRace = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
+  let delayedResponseError;
+  const delayedResponse = racePopup
+    .waitForResponse((response) => response.url() === `${apiBaseUrl}/api/audit/job` && response.request().method() === 'POST')
+    .catch((error) => {
+      delayedResponseError = error;
+      return undefined;
+    });
+  await racePopup.locator('#submit').click();
+  logRacePhase('audit-submitted');
+  const deadline = Date.now() + 5_000;
+  let persisted = 0;
+  while (Date.now() < deadline) {
+    persisted = (await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId])).rows[0].count;
+    if (persisted === beforeRace.rows[0].count + 1) break;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+  }
+  assert.equal(persisted, beforeRace.rows[0].count + 1, 'AuditRun must persist before the delayed HTTP response returns.');
+  logRacePhase('audit-run-persisted');
+  await raceSource.locator('#switch-to-b').click();
+  logRacePhase('job-b-navigation-triggered');
+  await racePopup.locator('#status').waitFor({ hasText: '旧审核结果已失效' });
+  logRacePhase('page-stale');
+  await racePopup.waitForFunction(() => {
+    const submitButton = globalThis.document.getElementById('submit');
+    const highlightButton = globalThis.document.getElementById('highlight');
+    return submitButton?.disabled === true && highlightButton?.disabled === true;
+  }, undefined, { timeout: 5_000 });
+  assert.equal(await racePopup.locator('#submit').isDisabled(), true);
+  assert.equal(await racePopup.locator('#highlight').isDisabled(), true);
+  assert.equal(await raceSource.locator('[data-job-compliance-highlight="true"]').count(), 0);
+  const delayedAuditResponse = await delayedResponse;
+  assert.equal(delayedResponseError, undefined, 'The delayed audit response watcher must remain active until the real response settles.');
+  assert.equal(delayedAuditResponse?.status(), 201);
+  logRacePhase('late-response-settled');
+  await racePopup.locator('#status').waitFor({ hasText: '当前页面已变化' });
+  const staleState = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState);
+  assert.equal(staleState.lifecycle.status, 'STALE');
+  assert.equal(staleState.result, undefined);
+  assert.equal(await raceSource.locator('h1').textContent(), '后端工程师');
+  assert.equal(await raceSource.locator('[data-job-compliance-highlight="true"]').count(), 0);
+  const afterLateResponse = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
+  assert.equal(afterLateResponse.rows[0].count, beforeRace.rows[0].count + 1);
+  await raceSource.bringToFront();
+  await racePopup.locator('#extract').click();
+  await racePopup.locator('[data-field="title"]').waitFor();
+  assert.equal(await racePopup.locator('[data-field="title"]').inputValue(), '后端工程师');
+  const generationB = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState.binding.generation);
+  assert.notEqual(generationA, generationB);
+  logRacePhase('job-b-recaptured');
+  const afterRecapture = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
+  assert.equal(afterRecapture.rows[0].count, beforeRace.rows[0].count + 1);
+  await racePopup.close();
+  await raceSource.close();
+  logRacePhase('passed');
+
+  console.log('Local API PostgreSQL browser extension E2E passed with real Chromium, API, PostgreSQL, and stale response race protection.');
 } catch (error) {
+  console.error(`=== SPA LATE RESPONSE RACE DIAGNOSTICS ===\nphase=${racePhase}\napiAlive=${apiProcess?.exitCode === null}\nerrorName=${error instanceof Error ? error.name : 'UnknownError'}\nerrorMessage=${error instanceof Error ? error.message.replaceAll(token, '[redacted-token]').replaceAll(databaseUrl, '[redacted-database]') : 'Unknown error'}\n=== END DIAGNOSTICS ===`);
   const sanitizedLogs = apiLogs.join('').replaceAll(token, '[redacted-token]').replaceAll(databaseUrl, '[redacted-database]');
   if (sanitizedLogs.trim()) console.error(`Local API diagnostic output: ${sanitizedLogs.slice(-4_000)}`);
   throw error;

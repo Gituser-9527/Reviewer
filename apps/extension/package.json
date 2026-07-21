@@ -2,5 +2,5 @@
   "name": "@job-compliance/extension",
   "private": true,
   "version": "0.1.0",
-  "scripts": { "build": "tsc -p tsconfig.json && esbuild src/content.ts --bundle --format=iife --platform=browser --outfile=dist/content.js", "lint": "eslint src", "test": "vitest run src" }
+  "scripts": { "build": "tsc -p tsconfig.json && esbuild src/content.ts --bundle --format=iife --platform=browser --outfile=dist/content.js && esbuild src/history-bridge.ts --bundle --format=iife --platform=browser --outfile=dist/history-bridge.js", "lint": "eslint src", "test": "vitest run src" }
 }
