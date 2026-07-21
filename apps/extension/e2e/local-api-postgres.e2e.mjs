@@ -133,6 +133,8 @@ const pool = new pg.Pool({ connectionString: databaseUrl });
 let context;
 let apiProcess;
 const apiLogs = [];
+let racePhase = 'not-started';
+const logRacePhase = (phase) => { racePhase = phase; console.log(`[extension-local-api-postgres][spa-race] phase=${phase}`); };
 
 try {
   const requiredExtensionFiles = ['manifest.json', 'popup.html', 'dist/popup.js', 'dist/background.js', 'dist/content.js'];
@@ -348,6 +350,7 @@ try {
   await restored.close();
 
   const raceSource = await context.newPage();
+  logRacePhase('fixture-opened');
   await raceSource.goto(fixtureUrl);
   await raceSource.waitForLoadState('networkidle');
   const racePopup = await context.newPage();
@@ -359,10 +362,12 @@ try {
   await raceSource.bringToFront();
   await racePopup.locator('#extract').click();
   await racePopup.locator('#preview').waitFor({ state: 'visible' });
+  logRacePhase('job-a-captured');
   const generationA = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState.binding.generation);
   const beforeRace = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
   const delayedResponse = racePopup.waitForResponse((response) => response.url() === `${apiBaseUrl}/api/audit/job` && response.request().method() === 'POST');
   await racePopup.locator('#submit').click();
+  logRacePhase('audit-submitted');
   const deadline = Date.now() + 5_000;
   let persisted = 0;
   while (Date.now() < deadline) {
@@ -371,12 +376,16 @@ try {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
   }
   assert.equal(persisted, beforeRace.rows[0].count + 1, 'AuditRun must persist before the delayed HTTP response returns.');
+  logRacePhase('audit-run-persisted');
   await raceSource.locator('#switch-to-b').click();
+  logRacePhase('job-b-navigation-triggered');
   await racePopup.locator('#status').waitFor({ hasText: '旧审核结果已失效' });
+  logRacePhase('page-stale');
   assert.equal(await racePopup.locator('#submit').isDisabled(), true);
   assert.equal(await racePopup.locator('#highlight').isDisabled(), true);
   assert.equal(await raceSource.locator('[data-job-compliance-highlight="true"]').count(), 0);
   assert.equal(await delayedResponse.then((response) => response.status()), 201);
+  logRacePhase('late-response-settled');
   await racePopup.locator('#status').waitFor({ hasText: '当前页面已变化' });
   const staleState = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState);
   assert.equal(staleState.lifecycle.status, 'STALE');
@@ -391,13 +400,16 @@ try {
   assert.equal(await racePopup.locator('[data-field="title"]').inputValue(), '后端工程师');
   const generationB = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState.binding.generation);
   assert.notEqual(generationA, generationB);
+  logRacePhase('job-b-recaptured');
   const afterRecapture = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
   assert.equal(afterRecapture.rows[0].count, beforeRace.rows[0].count + 1);
   await racePopup.close();
   await raceSource.close();
+  logRacePhase('passed');
 
   console.log('Local API PostgreSQL browser extension E2E passed with real Chromium, API, PostgreSQL, and stale response race protection.');
 } catch (error) {
+  console.error(`=== SPA LATE RESPONSE RACE DIAGNOSTICS ===\nphase=${racePhase}\napiAlive=${apiProcess?.exitCode === null}\n=== END DIAGNOSTICS ===`);
   const sanitizedLogs = apiLogs.join('').replaceAll(token, '[redacted-token]').replaceAll(databaseUrl, '[redacted-database]');
   if (sanitizedLogs.trim()) console.error(`Local API diagnostic output: ${sanitizedLogs.slice(-4_000)}`);
   throw error;
