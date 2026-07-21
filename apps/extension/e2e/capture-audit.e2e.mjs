@@ -67,6 +67,13 @@ try {
   assert.equal(await source.locator('[data-job-compliance-highlight="true"]').count(), 0);
   assert.equal(await restored.locator('#highlight').isDisabled(), true);
   assert.equal(await restored.locator('#submit').isDisabled(), true);
+  await restored.locator('#extract').click();
+  await restored.locator('#submit').click();
+  await restored.locator('#result').waitFor({ state:'visible' });
+  await source.evaluate(() => { globalThis.document.querySelector('#job-json')?.remove(); globalThis.document.querySelector('main')?.replaceChildren(); });
+  await restored.locator('#status').filter({ hasText: '旧审核结果已失效' }).waitFor();
+  assert.equal(await restored.locator('#result').isHidden(), true);
+  assert.equal(await restored.locator('#submit').isDisabled(), true);
   await source.evaluate(() => { const script = globalThis.document.createElement('script'); script.id = 'job-json'; script.type = 'application/ld+json'; globalThis.document.head.append(script); window.switchJob('b', 'push'); });
   await restored.locator('#extract').click();
   await restored.locator('#preview').waitFor({ state:'visible' });

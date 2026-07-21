@@ -5,6 +5,7 @@ import type { ExtensionMessage } from './types.js';
 
 let identityTimer: number | undefined;
 let observer: MutationObserver | undefined;
+let failedIdentityChecks = 0;
 const navigationEvent = 'job-compliance:navigation';
 
 function scheduleIdentityVerification(): void {
@@ -12,8 +13,15 @@ function scheduleIdentityVerification(): void {
   identityTimer = window.setTimeout(() => {
     identityTimer = undefined;
     const capture = extractDocument(document, location.href);
-    const identity = capture ? identityForCapture(capture) : { normalizedUrl: normalizePageUrl(location.href), captureFingerprint: null };
-    void chrome.runtime.sendMessage({ type: 'PAGE_IDENTITY_SIGNAL', identity }).catch(() => undefined);
+    if (capture) {
+      failedIdentityChecks = 0;
+      void chrome.runtime.sendMessage({ type: 'PAGE_IDENTITY_SIGNAL', identity: identityForCapture(capture) }).catch(() => undefined);
+      return;
+    }
+    failedIdentityChecks += 1;
+    const identity = { normalizedUrl: normalizePageUrl(location.href), captureFingerprint: null };
+    void chrome.runtime.sendMessage({ type: 'PAGE_IDENTITY_SIGNAL', identity, stableExtractionFailure: failedIdentityChecks > 1 }).catch(() => undefined);
+    if (failedIdentityChecks === 1) scheduleIdentityVerification();
   }, 120);
 }
 
@@ -45,6 +53,11 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, respond) => {
   if (m.type === 'EXTRACT_CURRENT_JOB') {
     const capture = extractDocument(document, location.href);
     respond(capture ? { type: 'JOB_EXTRACTION_SUCCEEDED', capture } : { type: 'JOB_EXTRACTION_FAILED', code: 'NO_JOB_FOUND' });
+    return true;
+  }
+  if (m.type === 'GET_PAGE_IDENTITY') {
+    const capture = extractDocument(document, location.href);
+    respond({ type: 'PAGE_IDENTITY_RESOLVED', identity: capture ? identityForCapture(capture) : { normalizedUrl: normalizePageUrl(location.href), captureFingerprint: null } });
     return true;
   }
   if (m.type === 'APPLY_FINDING_HIGHLIGHTS') {
