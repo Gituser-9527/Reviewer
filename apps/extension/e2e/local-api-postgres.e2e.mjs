@@ -365,7 +365,13 @@ try {
   logRacePhase('job-a-captured');
   const generationA = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState.binding.generation);
   const beforeRace = await pool.query('SELECT COUNT(*)::int AS count FROM audit_runs WHERE tenant_id=$1', [tenantId]);
-  const delayedResponse = racePopup.waitForResponse((response) => response.url() === `${apiBaseUrl}/api/audit/job` && response.request().method() === 'POST');
+  let delayedResponseError;
+  const delayedResponse = racePopup
+    .waitForResponse((response) => response.url() === `${apiBaseUrl}/api/audit/job` && response.request().method() === 'POST')
+    .catch((error) => {
+      delayedResponseError = error;
+      return undefined;
+    });
   await racePopup.locator('#submit').click();
   logRacePhase('audit-submitted');
   const deadline = Date.now() + 5_000;
@@ -384,7 +390,9 @@ try {
   assert.equal(await racePopup.locator('#submit').isDisabled(), true);
   assert.equal(await racePopup.locator('#highlight').isDisabled(), true);
   assert.equal(await raceSource.locator('[data-job-compliance-highlight="true"]').count(), 0);
-  assert.equal(await delayedResponse.then((response) => response.status()), 201);
+  const delayedAuditResponse = await delayedResponse;
+  assert.equal(delayedResponseError, undefined, 'The delayed audit response watcher must remain active until the real response settles.');
+  assert.equal(delayedAuditResponse?.status(), 201);
   logRacePhase('late-response-settled');
   await racePopup.locator('#status').waitFor({ hasText: '当前页面已变化' });
   const staleState = await racePopup.evaluate(async () => (await chrome.storage.local.get('jobComplianceCaptureState')).jobComplianceCaptureState);
@@ -409,7 +417,7 @@ try {
 
   console.log('Local API PostgreSQL browser extension E2E passed with real Chromium, API, PostgreSQL, and stale response race protection.');
 } catch (error) {
-  console.error(`=== SPA LATE RESPONSE RACE DIAGNOSTICS ===\nphase=${racePhase}\napiAlive=${apiProcess?.exitCode === null}\n=== END DIAGNOSTICS ===`);
+  console.error(`=== SPA LATE RESPONSE RACE DIAGNOSTICS ===\nphase=${racePhase}\napiAlive=${apiProcess?.exitCode === null}\nerrorName=${error instanceof Error ? error.name : 'UnknownError'}\nerrorMessage=${error instanceof Error ? error.message.replaceAll(token, '[redacted-token]').replaceAll(databaseUrl, '[redacted-database]') : 'Unknown error'}\n=== END DIAGNOSTICS ===`);
   const sanitizedLogs = apiLogs.join('').replaceAll(token, '[redacted-token]').replaceAll(databaseUrl, '[redacted-database]');
   if (sanitizedLogs.trim()) console.error(`Local API diagnostic output: ${sanitizedLogs.slice(-4_000)}`);
   throw error;
