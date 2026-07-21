@@ -388,8 +388,8 @@ try {
   await racePopup.locator('#status').waitFor({ hasText: '旧审核结果已失效' });
   logRacePhase('page-stale');
   await racePopup.waitForFunction(() => {
-    const submitButton = document.getElementById('submit');
-    const highlightButton = document.getElementById('highlight');
+    const submitButton = globalThis.document.getElementById('submit');
+    const highlightButton = globalThis.document.getElementById('highlight');
     return submitButton?.disabled === true && highlightButton?.disabled === true;
   }, undefined, { timeout: 5_000 });
   assert.equal(await racePopup.locator('#submit').isDisabled(), true);
