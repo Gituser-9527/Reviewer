@@ -10,10 +10,12 @@ describe('page lifecycle', () => {
     expect(invalidationReason(binding, { ...binding.identity, normalizedUrl: 'https://jobs.example.test/job?id=2' })).toBe('URL_CHANGED');
     expect(invalidationReason(binding, { ...binding.identity, captureFingerprint: 'fingerprint-b' })).toBe('JOB_CONTENT_CHANGED');
   });
-  it('only accepts an audit response for the current tab generation', () => {
+  it('only accepts an audit response for the current tab, generation, and page identity', () => {
     expect(acceptsAuditResponse({ binding, lifecycle: { status: 'CURRENT' } }, binding)).toBe(true);
     expect(acceptsAuditResponse({ binding: { ...binding, generation: 'second' }, lifecycle: { status: 'CURRENT' } }, binding)).toBe(false);
     expect(acceptsAuditResponse({ binding, lifecycle: { status: 'STALE', reason: 'URL_CHANGED', invalidatedAt: 'now' } }, binding)).toBe(false);
     expect(acceptsAuditResponse({ binding: { ...binding, tabId: 8 }, lifecycle: { status: 'CURRENT' } }, binding)).toBe(false);
+    expect(acceptsAuditResponse({ binding: { ...binding, identity: { ...binding.identity, normalizedUrl: 'https://jobs.example.test/job?id=2' } }, lifecycle: { status: 'CURRENT' } }, binding)).toBe(false);
+    expect(acceptsAuditResponse({ binding: { ...binding, identity: { ...binding.identity, captureFingerprint: 'fingerprint-b' } }, lifecycle: { status: 'CURRENT' } }, binding)).toBe(false);
   });
 });

@@ -7,5 +7,9 @@ export function invalidationReason(binding: PageBinding, identity: PageIdentity)
 }
 
 export function acceptsAuditResponse(current: { binding?: PageBinding; lifecycle: PageLifecycle }, request: PageBinding): boolean {
-  return current.lifecycle.status === 'CURRENT' && current.binding?.tabId === request.tabId && current.binding.generation === request.generation;
+  return current.lifecycle.status === 'CURRENT'
+    && current.binding?.tabId === request.tabId
+    && current.binding.generation === request.generation
+    && current.binding.identity.normalizedUrl === request.identity.normalizedUrl
+    && current.binding.identity.captureFingerprint === request.identity.captureFingerprint;
 }

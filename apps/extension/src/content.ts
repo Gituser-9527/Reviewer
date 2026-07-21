@@ -1,6 +1,6 @@
 import { extractDocument } from './extractor.js';
 import { applyFindingHighlights, clearFindingHighlights } from './finding-highlighter.js';
-import { identityForCapture } from './page-identity.js';
+import { identityForCapture, normalizePageUrl } from './page-identity.js';
 import type { ExtensionMessage } from './types.js';
 
 let identityTimer: number | undefined;
@@ -12,7 +12,8 @@ function scheduleIdentityVerification(): void {
   identityTimer = window.setTimeout(() => {
     identityTimer = undefined;
     const capture = extractDocument(document, location.href);
-    if (capture) void chrome.runtime.sendMessage({ type: 'PAGE_IDENTITY_SIGNAL', identity: identityForCapture(capture) }).catch(() => undefined);
+    const identity = capture ? identityForCapture(capture) : { normalizedUrl: normalizePageUrl(location.href), captureFingerprint: null };
+    void chrome.runtime.sendMessage({ type: 'PAGE_IDENTITY_SIGNAL', identity }).catch(() => undefined);
   }, 120);
 }
 
@@ -21,10 +22,15 @@ function extensionOwned(node: Node): boolean {
   return element?.closest('[data-job-compliance-highlight]') !== null;
 }
 
+function extensionOwnedMutation(mutation: MutationRecord): boolean {
+  if (mutation.type === 'characterData') return extensionOwned(mutation.target);
+  return Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes)).every(extensionOwned);
+}
+
 function installObserver(): void {
   if (observer || !document.body) return;
   observer = new MutationObserver((mutations) => {
-    if (mutations.every((mutation) => Array.from(mutation.addedNodes).concat(Array.from(mutation.removedNodes)).every(extensionOwned))) return;
+    if (mutations.every(extensionOwnedMutation)) return;
     scheduleIdentityVerification();
   });
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
