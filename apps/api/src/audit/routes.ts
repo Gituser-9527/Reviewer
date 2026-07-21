@@ -226,6 +226,7 @@ export function registerAuditRoutes(
         auditId: finalResult.auditId,
         ragNoResult: finalResult.findings.length > 0 && finalResult.evidence.length === 0,
       });
+      await delayAuditResponseForTest(process.env);
       return reply.code(201).send(finalResult);
     } catch (error) {
       const metrics = dependencies.runtimeServices?.metricsService.recordApiError();
@@ -287,4 +288,18 @@ export function registerAuditRoutes(
     const byType=Object.fromEntries(rows.map(row=>[String(row.task_type),row]));
     return reply.send({explanation:byType.AUDIT_GENERATE_EXPLANATIONS??null,rewrite:byType.AUDIT_GENERATE_REWRITE??null});
   });
+}
+
+const maximumTestAuditResponseDelayMs = 10_000;
+
+export function testAuditResponseDelayMs(env: NodeJS.ProcessEnv): number {
+  if (env.NODE_ENV !== 'test') return 0;
+  const parsed = Number(env.TEST_AUDIT_RESPONSE_DELAY_MS);
+  if (!Number.isInteger(parsed) || parsed <= 0) return 0;
+  return Math.min(parsed, maximumTestAuditResponseDelayMs);
+}
+
+async function delayAuditResponseForTest(env: NodeJS.ProcessEnv): Promise<void> {
+  const delayMs = testAuditResponseDelayMs(env);
+  if (delayMs > 0) await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, delayMs));
 }
