@@ -5,6 +5,17 @@ import process from 'node:process';
 import { URL } from 'node:url';
 
 const minimumNode = [20, 9, 0];
+const minimumNpm = [10, 0, 0];
+const approvedExtensionPermissions = ['activeTab', 'storage', 'tabs'];
+const readinessRequiredFiles = [
+  'package.json',
+  'apps/extension/manifest.json',
+  'docs/internal-alpha/README.md',
+  'docs/internal-alpha/ALPHA_READINESS_CHECKLIST.md',
+  'docs/internal-alpha/ALPHA_GO_NO_GO_TEMPLATE.md',
+  'docs/internal-alpha/ALPHA_READINESS_DOCTOR_DESIGN.md',
+];
+const readinessRequiredScripts = ['doctor:internal-alpha', 'doctor:internal-alpha-readiness'];
 
 export function parseVersion(value) {
   if (typeof value !== 'string') return undefined;
@@ -30,12 +41,40 @@ export function validHttpUrl(value) {
   }
 }
 
-export function createDoctor(options = {}) {
+function createDependencies(options) {
   const cwd = options.cwd ?? process.cwd();
-  const env = options.env ?? process.env;
-  const fs = options.fs ?? { exists: existsSync, readFile: (file) => readFileSync(file, 'utf8') };
-  const run = options.run ?? ((command, args) => execFileSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim());
-  const nodeVersion = options.nodeVersion ?? process.version;
+  const defaultRun = (command, args) => {
+    if (command === 'npm' && process.platform === 'win32') {
+      return execFileSync('cmd.exe', ['/d', '/s', '/c', `npm ${args.join(' ')}`], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    }
+    return execFileSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  };
+  return {
+    cwd,
+    env: options.env ?? process.env,
+    fs: options.fs ?? { exists: existsSync, readFile: (file) => readFileSync(file, 'utf8') },
+    run: options.run ?? defaultRun,
+    nodeVersion: Object.hasOwn(options, 'nodeVersion') ? options.nodeVersion : process.version,
+  };
+}
+
+function addVersionCheck(rows, name, value, minimum) {
+  const parsed = parseVersion(value);
+  rows.push({
+    status: atLeast(parsed, minimum) ? 'PASS' : 'FAIL',
+    name,
+    detail: atLeast(parsed, minimum) ? `stable version meets >=${minimum.join('.')}` : `requires a stable version >=${minimum.join('.')}`,
+  });
+}
+
+function samePermissions(actual) {
+  return Array.isArray(actual)
+    && actual.length === approvedExtensionPermissions.length
+    && [...actual].sort().every((permission, index) => permission === approvedExtensionPermissions[index]);
+}
+
+export function createDoctor(options = {}) {
+  const { cwd, env, fs, run, nodeVersion } = createDependencies(options);
   const rows = [];
   const add = (status, name, detail) => rows.push({ status, name, detail });
   const present = (name) => Boolean(env[name]?.trim());
@@ -48,7 +87,7 @@ export function createDoctor(options = {}) {
       ? execFileSync('cmd.exe', ['/d', '/s', '/c', 'npm --version'], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       : run('npm', ['--version']));
     const parsedNpmVersion = parseVersion(npmVersion);
-    add(atLeast(parsedNpmVersion, [10, 0, 0]) ? 'PASS' : 'FAIL', 'npm', atLeast(parsedNpmVersion, [10, 0, 0]) ? `detected ${npmVersion.trim()}` : 'requires a stable version >=10.0.0');
+    add(atLeast(parsedNpmVersion, minimumNpm) ? 'PASS' : 'FAIL', 'npm', atLeast(parsedNpmVersion, minimumNpm) ? `detected ${npmVersion.trim()}` : 'requires a stable version >=10.0.0');
   } catch {
     add('FAIL', 'npm', 'npm is not available on PATH');
   }
@@ -87,6 +126,70 @@ export function createDoctor(options = {}) {
   } catch {
     add('WARN', 'Git', 'Git metadata is unavailable; version cannot be recorded');
   }
+  return rows;
+}
+
+export function createReadinessDoctor(options = {}) {
+  const { cwd, fs, run, nodeVersion } = createDependencies(options);
+  const rows = [];
+  const file = (...parts) => join(cwd, ...parts);
+
+  addVersionCheck(rows, 'Runtime Node.js', nodeVersion, minimumNode);
+  try {
+    addVersionCheck(rows, 'Runtime npm', options.npmVersion ?? run('npm', ['--version']), minimumNpm);
+  } catch {
+    rows.push({ status: 'FAIL', name: 'Runtime npm', detail: 'npm is not available on PATH' });
+  }
+
+  for (const requiredFile of readinessRequiredFiles) {
+    rows.push({
+      status: fs.exists(file(requiredFile)) ? 'PASS' : 'FAIL',
+      name: `Repository ${requiredFile}`,
+      detail: fs.exists(file(requiredFile)) ? 'required file found' : 'required file is missing',
+    });
+  }
+
+  const packageFile = file('package.json');
+  if (!fs.exists(packageFile)) {
+    rows.push({ status: 'FAIL', name: 'Repository package scripts', detail: 'package.json is missing' });
+  } else {
+    try {
+      const scripts = JSON.parse(fs.readFile(packageFile)).scripts;
+      const present = readinessRequiredScripts.every((script) => typeof scripts?.[script] === 'string' && scripts[script].length > 0);
+      rows.push({ status: present ? 'PASS' : 'FAIL', name: 'Repository package scripts', detail: present ? 'required doctor scripts found' : 'required doctor script is missing' });
+    } catch {
+      rows.push({ status: 'FAIL', name: 'Repository package scripts', detail: 'package.json cannot be parsed' });
+    }
+  }
+
+  const manifestFile = file('apps', 'extension', 'manifest.json');
+  if (!fs.exists(manifestFile)) {
+    rows.push({ status: 'FAIL', name: 'Extension manifest', detail: 'manifest is missing' });
+  } else {
+    try {
+      const manifest = JSON.parse(fs.readFile(manifestFile));
+      rows.push({
+        status: typeof manifest.version === 'string' && parseVersion(manifest.version) ? 'PASS' : 'FAIL',
+        name: 'Extension manifest version',
+        detail: typeof manifest.version === 'string' && parseVersion(manifest.version) ? 'manifest version is stable' : 'manifest version must be a stable semantic version',
+      });
+      rows.push({
+        status: samePermissions(manifest.permissions) ? 'PASS' : 'FAIL',
+        name: 'Extension manifest permissions',
+        detail: samePermissions(manifest.permissions) ? 'permissions match the approved baseline' : 'permissions do not match the approved baseline',
+      });
+    } catch {
+      rows.push({ status: 'FAIL', name: 'Extension manifest', detail: 'manifest cannot be parsed' });
+    }
+  }
+
+  try {
+    const dirty = run('git', ['status', '--porcelain']);
+    rows.push({ status: dirty ? 'WARN' : 'PASS', name: 'Repository working tree', detail: dirty ? 'working tree has changes' : 'working tree is clean' });
+  } catch {
+    rows.push({ status: 'WARN', name: 'Repository working tree', detail: 'Git metadata is unavailable' });
+  }
+
   return rows;
 }
 
