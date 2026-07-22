@@ -22,6 +22,8 @@ Doctor 仅检查本地版本、文件、Manifest、URL 静态格式和配置变�
 
 启动前使用 [ALPHA_READINESS_CHECKLIST.md](./ALPHA_READINESS_CHECKLIST.md) 记录准备状态，以 [ALPHA_GO_NO_GO_TEMPLATE.md](./ALPHA_GO_NO_GO_TEMPLATE.md) 记录人工 Go/No-Go 决策；[ALPHA_READINESS_DOCTOR_DESIGN.md](./ALPHA_READINESS_DOCTOR_DESIGN.md) 说明本地静态 Doctor 与后续只读探测的边界。
 
+维护人员可使用 [LOCAL_SMOKE_RUNBOOK.md](./LOCAL_SMOKE_RUNBOOK.md) 在完全本地、脱敏夹具中进行一次人工 ASSIST Smoke；该 Smoke 不属于真人 Pilot，也不构成 Alpha Go。
+
 ## 适用与停止
 
 启动门禁、停止条件和支持范围见 [TEST_PLAN.md](./TEST_PLAN.md)。安全数据边界见 [SECURITY_AND_DATA.md](./SECURITY_AND_DATA.md)，限制见 [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)。
