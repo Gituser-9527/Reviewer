@@ -73,3 +73,10 @@ test('harness source does not automate Popup interactions or hard-code an extens
   assert.equal(source.includes("page.route('http://**/*'"), true);
   assert.equal(source.includes('testDatabaseOwned'), true);
 });
+
+test('manual Smoke fixture contains deterministic, page-locatable rule evidence', async () => {
+  const source = await readFile(new URL('./internal-alpha-local-smoke.mjs', import.meta.url), 'utf8');
+  assert.equal(source.includes('限女性'), true, 'The local fixture must contain deterministic YAML-rule evidence.');
+  assert.equal(source.includes('服装费'), true, 'The local fixture must contain a second deterministic YAML-rule evidence phrase.');
+  assert.equal(source.includes('LOCAL INTERNAL ALPHA SMOKE'), true, 'The fixture must remain explicitly local-only.');
+});
