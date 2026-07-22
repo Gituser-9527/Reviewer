@@ -20,6 +20,8 @@
 
 Doctor 仅检查本地版本、文件、Manifest、URL 静态格式和配置变量是否存在。Doctor 通过不表示 Alpha API 已在线、数据库已连接、tenant 已创建、Token 有效或 CORS 已部署；真人 Pilot 前仍须由维护人员人工验证 health、migration、专用 tenant、最小权限凭据、精确 extension Origin 以及一次受控真实审核。
 
+启动前使用 [ALPHA_READINESS_CHECKLIST.md](./ALPHA_READINESS_CHECKLIST.md) 记录准备状态，以 [ALPHA_GO_NO_GO_TEMPLATE.md](./ALPHA_GO_NO_GO_TEMPLATE.md) 记录人工 Go/No-Go 决策；[ALPHA_READINESS_DOCTOR_DESIGN.md](./ALPHA_READINESS_DOCTOR_DESIGN.md) 说明本地静态 Doctor 与后续只读探测的边界。
+
 ## 适用与停止
 
 启动门禁、停止条件和支持范围见 [TEST_PLAN.md](./TEST_PLAN.md)。安全数据边界见 [SECURITY_AND_DATA.md](./SECURITY_AND_DATA.md)，限制见 [KNOWN_LIMITATIONS.md](./KNOWN_LIMITATIONS.md)。
