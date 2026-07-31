@@ -2644,7 +2644,7 @@ export const learningFeedbackSubmissions = pgTable(
     tenantId: text('tenant_id').notNull(),
     auditRunId: text('audit_run_id').notNull().references(() => auditRuns.id, { onDelete: 'restrict' }),
     humanReviewTicketId: text('human_review_ticket_id').notNull().references(() => reviewTickets.id, { onDelete: 'restrict' }),
-    reviewerDecisionId: text('reviewer_decision_id').notNull().references(() => humanReviewFeedback.id, { onDelete: 'restrict' }),
+    reviewerDecisionId: uuid('reviewer_decision_id').notNull().references(() => humanReviewFeedback.id, { onDelete: 'restrict' }),
     source: text('source').notNull(),
     status: text('status').notNull(),
     consentScope: text('consent_scope').notNull(),

@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS learning_feedback_submissions (
   tenant_id TEXT NOT NULL,
   audit_run_id TEXT NOT NULL REFERENCES audit_runs(id) ON DELETE RESTRICT,
   human_review_ticket_id TEXT NOT NULL REFERENCES review_tickets(id) ON DELETE RESTRICT,
-  reviewer_decision_id TEXT NOT NULL REFERENCES human_review_feedback(id) ON DELETE RESTRICT,
+  reviewer_decision_id UUID NOT NULL REFERENCES human_review_feedback(id) ON DELETE RESTRICT,
   source TEXT NOT NULL CHECK (source IN ('WEB', 'EXTENSION', 'API')),
   status TEXT NOT NULL CHECK (status IN ('RECEIVED', 'NEEDS_REVIEW', 'PRIVACY_REJECTED', 'APPROVED', 'REJECTED', 'WITHDRAWN', 'PROMOTED_TO_GOLD_SET')),
   consent_scope TEXT NOT NULL CHECK (consent_scope = 'TENANT_PRIVATE'),

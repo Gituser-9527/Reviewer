@@ -4,7 +4,7 @@
 
 This feature provides a tenant-private, privacy-quarantined channel for a human reviewer to voluntarily submit a completed review decision for later quality analysis. It is not training, rule publication, model tuning, automatic evaluation-set promotion, or an audit-decision path. Production YAML rules remain the deterministic conclusion source; Semantic Classifier and Reflection keep their production `UNAVAILABLE` default.
 
-The required sequence is: `AuditRun → HumanReviewTicket → completed reviewer decision → sanitized preview → explicit confirmation → LearningFeedbackSubmission → human quarantine review`. Audit runs cannot bypass the human-decision and consent steps.
+The required sequence is: `AuditRun → HumanReviewTicket → completed reviewer decision → sanitized preview → explicit confirmation → LearningFeedbackSubmission → human quarantine review`. Audit runs cannot bypass the human-decision and consent steps. The submission references the completed `human_review_feedback` record by its UUID primary key; it does not reference the separate multi-reviewer labeling/aggregation records.
 
 ## Consent and data minimization
 
