@@ -17,6 +17,7 @@ import type {
   Finding,
   HumanReviewTicket,
   JobPostingInput,
+  LearningFeedbackSubmission,
   RuleImprovementSuggestion,
 } from '@job-compliance/shared';
 
@@ -168,6 +169,8 @@ export interface DisputedCasePayload {
   updatedAt: string;
   resolvedAt?: string;
 }
+
+export type LearningFeedbackSubmissionPayload = LearningFeedbackSubmission;
 
 export interface UserPayload {
   id: string;
@@ -2626,5 +2629,50 @@ export const releaseApprovalRecords = pgTable(
   (table) => [
     index('release_approval_records_candidate_idx').on(table.candidateId),
     index('release_approval_records_approver_idx').on(table.approvedBy),
+  ],
+);
+
+/**
+ * A privacy-quarantined, explicitly consented feedback record. The payload is
+ * sanitized before this table is reached and is never a source for automatic
+ * training, rule publication, or audit-decision changes.
+ */
+export const learningFeedbackSubmissions = pgTable(
+  'learning_feedback_submissions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    auditRunId: text('audit_run_id').notNull().references(() => auditRuns.id, { onDelete: 'restrict' }),
+    humanReviewTicketId: text('human_review_ticket_id').notNull().references(() => reviewTickets.id, { onDelete: 'restrict' }),
+    reviewerDecisionId: text('reviewer_decision_id').notNull().references(() => humanReviewFeedback.id, { onDelete: 'restrict' }),
+    source: text('source').notNull(),
+    status: text('status').notNull(),
+    consentScope: text('consent_scope').notNull(),
+    consentNoticeVersion: text('consent_notice_version').notNull(),
+    consentedAt: timestamp('consented_at', { withTimezone: true }).notNull(),
+    purpose: text('purpose').notNull(),
+    retentionDays: integer('retention_days').notNull(),
+    retentionExpiresAt: timestamp('retention_expires_at', { withTimezone: true }).notNull(),
+    reviewerPseudonym: text('reviewer_pseudonym').notNull(),
+    pseudonymKeyVersion: text('pseudonym_key_version').notNull(),
+    digest: text('digest').notNull(),
+    sanitizedComment: text('sanitized_comment').notNull(),
+    sanitizedEvidenceFragments: jsonb('sanitized_evidence_fragments').$type<string[]>().notNull(),
+    redactionSummary: jsonb('redaction_summary').$type<LearningFeedbackSubmission['redactionSummary']>().notNull(),
+    agentDecision: text('agent_decision').notNull(),
+    humanDecision: text('human_decision').notNull(),
+    ruleVersion: text('rule_version'),
+    lawKbVersion: text('law_kb_version'),
+    payload: jsonb('payload').$type<LearningFeedbackSubmissionPayload>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    supersededBy: text('superseded_by'),
+  },
+  (table) => [
+    uniqueIndex('learning_feedback_idempotency_idx').on(table.tenantId, table.reviewerDecisionId, table.digest, table.consentNoticeVersion),
+    index('learning_feedback_tenant_status_idx').on(table.tenantId, table.status),
+    index('learning_feedback_retention_idx').on(table.retentionExpiresAt, table.status),
+    index('learning_feedback_ticket_idx').on(table.humanReviewTicketId),
   ],
 );

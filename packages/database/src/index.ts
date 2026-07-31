@@ -4,6 +4,7 @@ export * from './privacy.js';
 export * from './eval-repository.js';
 export * from './repository.js';
 export * from './llm-persistence-repository.js';
+export * from './learning-feedback-repository.js';
 export * from './schema.js';
 
 export interface DatabaseHealth {

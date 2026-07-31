@@ -32,6 +32,9 @@ export const permissions = [
   'audit_log:read',
   'settings:read',
   'settings:write',
+  'learning-feedback:read',
+  'learning-feedback:write',
+  'learning-feedback:review',
 ] as const;
 
 export type Permission = (typeof permissions)[number];
@@ -72,7 +75,7 @@ export interface RulePublishApprovalRecord {
 
 const permissionsByRole: Record<Role, Permission[]> = {
   SUPER_ADMIN: [...permissions],
-  TENANT_ADMIN: ['audit:read', 'review:read', 'eval:read', 'settings:read', 'settings:write'],
+  TENANT_ADMIN: ['audit:read', 'review:read', 'eval:read', 'settings:read', 'settings:write', 'learning-feedback:read'],
   COMPLIANCE_MANAGER: [
     'audit:read',
     'review:read',
@@ -85,8 +88,11 @@ const permissionsByRole: Record<Role, Permission[]> = {
     'audit_log:read',
     'settings:read',
     'settings:write',
+    'learning-feedback:read',
+    'learning-feedback:write',
+    'learning-feedback:review',
   ],
-  REVIEWER: ['audit:read', 'review:read', 'review:write'],
+  REVIEWER: ['audit:read', 'review:read', 'review:write', 'learning-feedback:read', 'learning-feedback:write'],
   RULE_OPERATOR: ['rule:read', 'rule:edit_draft', 'review:read', 'eval:read'],
   VIEWER: ['audit:read', 'review:read', 'rule:read', 'runtime:read', 'eval:read'],
   AUDIT_OPERATOR: ['audit:read', 'audit:write'],
