@@ -83,6 +83,11 @@ export interface AuditRunRepository {
   ): Promise<HumanReviewTicket | undefined>;
   /** Finds one human review ticket by id. */
   findHumanReviewTicketById(id: string): Promise<HumanReviewTicket | undefined>;
+  /** Finds one human review ticket inside an explicit tenant boundary. */
+  findHumanReviewTicketByIdForTenant(
+    id: string,
+    tenantId: string,
+  ): Promise<HumanReviewTicket | undefined>;
   /** Lists human review tickets. */
   listHumanReviewTickets(options?: ListHumanReviewTicketsOptions): Promise<HumanReviewTicket[]>;
   /** Persists human review feedback and returns the updated ticket. */
@@ -302,6 +307,18 @@ export class PostgresAuditRunRepository implements AuditRunRepository {
       .select({ payload: reviewTickets.payload })
       .from(reviewTickets)
       .where(eq(reviewTickets.id, id))
+      .limit(1);
+    return row?.payload;
+  }
+
+  async findHumanReviewTicketByIdForTenant(
+    id: string,
+    tenantId: string,
+  ): Promise<HumanReviewTicket | undefined> {
+    const [row] = await this.db
+      .select({ payload: reviewTickets.payload })
+      .from(reviewTickets)
+      .where(and(eq(reviewTickets.id, id), eq(reviewTickets.tenantId, tenantId)))
       .limit(1);
     return row?.payload;
   }

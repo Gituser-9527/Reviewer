@@ -1,5 +1,6 @@
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -916,6 +917,7 @@ export const auditRuns = pgTable(
     persistedAt: timestamp('persisted_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('audit_runs_learning_feedback_chain_uidx').on(table.id, table.tenantId),
     index('audit_runs_tenant_created_at_idx').on(table.tenantId, table.createdAt),
     index('audit_runs_tenant_decision_idx').on(table.tenantId, table.decision),
     index('audit_runs_tenant_risk_level_idx').on(table.tenantId, table.riskLevel),
@@ -1187,6 +1189,7 @@ export const reviewTickets = pgTable(
   },
   (table) => [
     uniqueIndex('review_tickets_audit_run_idx').on(table.auditRunId),
+    uniqueIndex('review_tickets_learning_feedback_chain_uidx').on(table.id, table.auditRunId, table.tenantId),
     index('review_tickets_tenant_status_idx').on(table.tenantId, table.status),
     index('review_tickets_tenant_created_at_idx').on(table.tenantId, table.createdAt),
   ],
@@ -1212,7 +1215,10 @@ export const humanReviewFeedback = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().default({}).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index('human_review_feedback_tenant_run_idx').on(table.tenantId, table.auditRunId)],
+  (table) => [
+    uniqueIndex('human_review_feedback_learning_feedback_chain_uidx').on(table.id, table.reviewTicketId, table.auditRunId, table.tenantId),
+    index('human_review_feedback_tenant_run_idx').on(table.tenantId, table.auditRunId),
+  ],
 );
 
 export const reviewerDecisions = pgTable(
@@ -2642,9 +2648,9 @@ export const learningFeedbackSubmissions = pgTable(
   {
     id: text('id').primaryKey(),
     tenantId: text('tenant_id').notNull(),
-    auditRunId: text('audit_run_id').notNull().references(() => auditRuns.id, { onDelete: 'restrict' }),
-    humanReviewTicketId: text('human_review_ticket_id').notNull().references(() => reviewTickets.id, { onDelete: 'restrict' }),
-    reviewerDecisionId: uuid('reviewer_decision_id').notNull().references(() => humanReviewFeedback.id, { onDelete: 'restrict' }),
+    auditRunId: text('audit_run_id').notNull(),
+    humanReviewTicketId: text('human_review_ticket_id').notNull(),
+    reviewerDecisionId: uuid('reviewer_decision_id').notNull(),
     source: text('source').notNull(),
     status: text('status').notNull(),
     consentScope: text('consent_scope').notNull(),
@@ -2670,6 +2676,9 @@ export const learningFeedbackSubmissions = pgTable(
     supersededBy: text('superseded_by'),
   },
   (table) => [
+    foreignKey({ columns: [table.auditRunId, table.tenantId], foreignColumns: [auditRuns.id, auditRuns.tenantId], name: 'learning_feedback_audit_tenant_fkey' }).onDelete('restrict'),
+    foreignKey({ columns: [table.humanReviewTicketId, table.auditRunId, table.tenantId], foreignColumns: [reviewTickets.id, reviewTickets.auditRunId, reviewTickets.tenantId], name: 'learning_feedback_ticket_chain_fkey' }).onDelete('restrict'),
+    foreignKey({ columns: [table.reviewerDecisionId, table.humanReviewTicketId, table.auditRunId, table.tenantId], foreignColumns: [humanReviewFeedback.id, humanReviewFeedback.reviewTicketId, humanReviewFeedback.auditRunId, humanReviewFeedback.tenantId], name: 'learning_feedback_decision_chain_fkey' }).onDelete('restrict'),
     uniqueIndex('learning_feedback_idempotency_idx').on(table.tenantId, table.reviewerDecisionId, table.digest, table.consentNoticeVersion),
     index('learning_feedback_tenant_status_idx').on(table.tenantId, table.status),
     index('learning_feedback_retention_idx').on(table.retentionExpiresAt, table.status),

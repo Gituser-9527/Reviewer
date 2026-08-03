@@ -1,6 +1,13 @@
 export const learningConsentScopes = ['NONE', 'TENANT_PRIVATE', 'GLOBAL_ANONYMIZED'] as const;
 export type LearningConsentScope = (typeof learningConsentScopes)[number];
 
+/** V1 accepts feedback only through the authenticated API adapter. */
+export const learningFeedbackSource = 'API' as const;
+/** V1 purpose is server-controlled and cannot be supplied as free text. */
+export const learningFeedbackPurpose = 'QUALITY_IMPROVEMENT_REVIEW' as const;
+/** Consent text version currently approved for the V1 API flow. */
+export const learningFeedbackConsentNoticeVersion = 'learning-feedback-v1' as const;
+
 export const learningFeedbackStatuses = [
   'RECEIVED',
   'NEEDS_REVIEW',
@@ -19,7 +26,7 @@ export interface LearningFeedbackPreview {
   sanitizedEvidenceFragments: string[];
   redactionSummary: { redactionCount: number; needsPrivacyReview: boolean };
   noticeVersion: string;
-  purpose: string;
+  purpose: typeof learningFeedbackPurpose;
   retentionDays: number;
 }
 
@@ -30,12 +37,12 @@ export interface LearningFeedbackSubmission {
   auditRunId: string;
   humanReviewTicketId: string;
   reviewerDecisionId: string;
-  source: 'WEB' | 'EXTENSION' | 'API';
+  source: typeof learningFeedbackSource;
   status: LearningFeedbackStatus;
   consentScope: 'TENANT_PRIVATE';
   consentNoticeVersion: string;
   consentedAt: string;
-  purpose: string;
+  purpose: typeof learningFeedbackPurpose;
   retentionDays: number;
   retentionExpiresAt: string;
   reviewerPseudonym: string;

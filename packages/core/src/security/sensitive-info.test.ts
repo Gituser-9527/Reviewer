@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   detectSensitiveInfo,
   hashSensitiveValue,
+  pseudonymizeSensitiveValue,
   redactSensitiveInfo,
   sanitizeAuditLog,
   sanitizeLLMMessages,
+  sanitizeSensitiveText,
 } from './sensitive-info.js';
 
 const sensitiveText =
@@ -55,12 +57,36 @@ describe('security sensitive info module', () => {
     expect(redacted).not.toContain('123456');
   });
 
+  it('redacts credentials, URLs and database connection strings through the canonical entrypoint', () => {
+    const marker = 'LEARNING_SECRET_MARKER_173';
+    const sanitized = sanitizeSensitiveText(
+      `Authorization: Bearer ${marker} access_token=${marker} https://example.test/${marker} postgresql://user:${marker}@localhost/db`,
+    );
+
+    expect(sanitized.redactionCount).toBe(4);
+    expect(sanitized.value).not.toContain(marker);
+    expect(sanitized.value).toContain('[REDACTED_AUTHORIZATION]');
+    expect(sanitized.value).toContain('[REDACTED_API_TOKEN]');
+    expect(sanitized.value).toContain('[REDACTED_URL]');
+    expect(sanitized.value).toContain('[REDACTED_DATABASE_URL]');
+  });
+
   it('hashes sensitive values deterministically', () => {
     const left = hashSensitiveValue({ phone: '13812345678', name: 'candidate' });
     const right = hashSensitiveValue({ name: 'candidate', phone: '13812345678' });
 
     expect(left).toBe(right);
     expect(left).toHaveLength(64);
+  });
+
+  it('creates keyed tenant-scoped pseudonyms', () => {
+    const left = pseudonymizeSensitiveValue({ tenantId: 'tenant-a', reviewerId: 'reviewer-a' }, 'key-a');
+    const otherTenant = pseudonymizeSensitiveValue({ tenantId: 'tenant-b', reviewerId: 'reviewer-a' }, 'key-a');
+    const otherKey = pseudonymizeSensitiveValue({ tenantId: 'tenant-a', reviewerId: 'reviewer-a' }, 'key-b');
+    expect(left).toHaveLength(64);
+    expect(left).not.toBe(otherTenant);
+    expect(left).not.toBe(otherKey);
+    expect(left).not.toContain('reviewer-a');
   });
 
   it('sanitizes audit logs and omits rawText by default', () => {

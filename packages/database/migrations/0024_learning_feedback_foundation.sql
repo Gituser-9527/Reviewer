@@ -1,15 +1,22 @@
+CREATE UNIQUE INDEX IF NOT EXISTS audit_runs_learning_feedback_chain_uidx
+  ON audit_runs (id, tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS review_tickets_learning_feedback_chain_uidx
+  ON review_tickets (id, audit_run_id, tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS human_review_feedback_learning_feedback_chain_uidx
+  ON human_review_feedback (id, review_ticket_id, audit_run_id, tenant_id);
+
 CREATE TABLE IF NOT EXISTS learning_feedback_submissions (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
-  audit_run_id TEXT NOT NULL REFERENCES audit_runs(id) ON DELETE RESTRICT,
-  human_review_ticket_id TEXT NOT NULL REFERENCES review_tickets(id) ON DELETE RESTRICT,
-  reviewer_decision_id UUID NOT NULL REFERENCES human_review_feedback(id) ON DELETE RESTRICT,
-  source TEXT NOT NULL CHECK (source IN ('WEB', 'EXTENSION', 'API')),
+  audit_run_id TEXT NOT NULL,
+  human_review_ticket_id TEXT NOT NULL,
+  reviewer_decision_id UUID NOT NULL,
+  source TEXT NOT NULL CHECK (source = 'API'),
   status TEXT NOT NULL CHECK (status IN ('RECEIVED', 'NEEDS_REVIEW', 'PRIVACY_REJECTED', 'APPROVED', 'REJECTED', 'WITHDRAWN', 'PROMOTED_TO_GOLD_SET')),
   consent_scope TEXT NOT NULL CHECK (consent_scope = 'TENANT_PRIVATE'),
-  consent_notice_version TEXT NOT NULL,
+  consent_notice_version TEXT NOT NULL CHECK (consent_notice_version = 'learning-feedback-v1'),
   consented_at TIMESTAMPTZ NOT NULL,
-  purpose TEXT NOT NULL,
+  purpose TEXT NOT NULL CHECK (purpose = 'QUALITY_IMPROVEMENT_REVIEW'),
   retention_days INTEGER NOT NULL CHECK (retention_days > 0),
   retention_expires_at TIMESTAMPTZ NOT NULL,
   reviewer_pseudonym TEXT NOT NULL,
@@ -26,7 +33,16 @@ CREATE TABLE IF NOT EXISTS learning_feedback_submissions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   withdrawn_at TIMESTAMPTZ,
-  superseded_by TEXT
+  superseded_by TEXT,
+  CONSTRAINT learning_feedback_audit_tenant_fkey
+    FOREIGN KEY (audit_run_id, tenant_id)
+    REFERENCES audit_runs (id, tenant_id) ON DELETE RESTRICT,
+  CONSTRAINT learning_feedback_ticket_chain_fkey
+    FOREIGN KEY (human_review_ticket_id, audit_run_id, tenant_id)
+    REFERENCES review_tickets (id, audit_run_id, tenant_id) ON DELETE RESTRICT,
+  CONSTRAINT learning_feedback_decision_chain_fkey
+    FOREIGN KEY (reviewer_decision_id, human_review_ticket_id, audit_run_id, tenant_id)
+    REFERENCES human_review_feedback (id, review_ticket_id, audit_run_id, tenant_id) ON DELETE RESTRICT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS learning_feedback_idempotency_idx

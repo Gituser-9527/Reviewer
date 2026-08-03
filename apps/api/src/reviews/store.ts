@@ -33,6 +33,11 @@ export interface HumanReviewStore {
   ): Promise<HumanReviewTicket | undefined> | HumanReviewTicket | undefined;
   /** Finds a ticket by id. */
   findById(id: string): Promise<HumanReviewTicket | undefined> | HumanReviewTicket | undefined;
+  /** Finds a ticket without revealing whether another tenant owns the same id. */
+  findByIdForTenant(
+    id: string,
+    tenantId: string,
+  ): Promise<HumanReviewTicket | undefined> | HumanReviewTicket | undefined;
   /** Lists tickets by optional status and tenant. */
   list(options?: {
     status?: HumanReviewStatus | 'all';
@@ -98,6 +103,13 @@ export class InMemoryHumanReviewStore implements HumanReviewStore {
   findById(id: string): HumanReviewTicket | undefined {
     const ticket = this.tickets.get(id);
     return ticket === undefined ? undefined : structuredClone(ticket);
+  }
+
+  findByIdForTenant(id: string, tenantId: string): HumanReviewTicket | undefined {
+    const ticket = this.tickets.get(id);
+    return ticket === undefined || ticket.tenantId !== tenantId
+      ? undefined
+      : structuredClone(ticket);
   }
 
   list(

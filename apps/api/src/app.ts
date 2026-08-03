@@ -27,7 +27,7 @@ import { registerLaunchSecurityRoutes } from './launch-check/routes.js';
 import { LaunchSecurityComplianceService } from './launch-check/service.js';
 import { registerKnowledgeUpdateRoutes } from './knowledge-update/routes.js';
 import { LawKbUpdateService } from './knowledge-update/service.js';
-import { registerOperationalLogging, type ReadinessCheck, sendMetrics } from './operations.js';
+import { registerOperationalLogging, safeErrorLogDetails, type ReadinessCheck, sendMetrics } from './operations.js';
 import { registerPerformanceRoutes } from './performance/routes.js';
 import { createPerformanceServices, RateLimitError, type PerformanceServices } from './performance/service.js';
 import { registerPilotRoutes } from './pilot/routes.js';
@@ -302,7 +302,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
 
     if (error instanceof LearningFeedbackError) {
-      const statusCode = error.code === 'LEARNING_FEEDBACK_NOT_FOUND' ? 404 : error.code === 'GLOBAL_LEARNING_CONSENT_UNAVAILABLE' || error.code === 'PREVIEW_DIGEST_MISMATCH' || error.code === 'LEARNING_FEEDBACK_STATE_INVALID' ? 409 : error.code === 'LEARNING_FEEDBACK_UNAVAILABLE' ? 503 : 422;
+      const statusCode = error.code === 'LEARNING_FEEDBACK_NOT_FOUND' ? 404 : error.code === 'LEARNING_FEEDBACK_WITHDRAW_FORBIDDEN' ? 403 : error.code === 'GLOBAL_LEARNING_CONSENT_UNAVAILABLE' || error.code === 'PREVIEW_DIGEST_MISMATCH' || error.code === 'LEARNING_FEEDBACK_STATE_INVALID' ? 409 : error.code === 'LEARNING_FEEDBACK_UNAVAILABLE' ? 503 : 422;
       return reply.code(statusCode).send({ requestId: request.id, error: { code: error.code, message: error.message, retryable: false } });
     }
 
@@ -339,7 +339,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       });
     }
 
-    request.log.error({ err: error }, 'Unhandled request error');
+    request.log.error({ error: safeErrorLogDetails(error) }, 'Unhandled request error');
     return reply.code(500).send({
       requestId: request.id,
       error: {

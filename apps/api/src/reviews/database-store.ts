@@ -27,6 +27,10 @@ export class DatabaseHumanReviewStore implements HumanReviewStore {
     return this.repository.findHumanReviewTicketById(id);
   }
 
+  async findByIdForTenant(id: string, tenantId: string): Promise<HumanReviewTicket | undefined> {
+    return this.repository.findHumanReviewTicketByIdForTenant(id, tenantId);
+  }
+
   async list(options: Parameters<HumanReviewStore['list']>[0] = {}): Promise<HumanReviewTicket[]> {
     return this.repository.listHumanReviewTickets(options);
   }

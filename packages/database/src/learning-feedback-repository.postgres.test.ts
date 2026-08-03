@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AuditResult, JobPostingInput, LearningFeedbackSubmission } from '@job-compliance/shared';
+import {
+  learningFeedbackConsentNoticeVersion,
+  learningFeedbackPurpose,
+  learningFeedbackSource,
+  type AuditResult,
+  type HumanReviewTicket,
+  type JobPostingInput,
+  type LearningFeedbackSubmission,
+} from '@job-compliance/shared';
 import { PostgresLearningFeedbackRepository } from './learning-feedback-repository.js';
 import { PostgresAuditRunRepository } from './repository.js';
 
@@ -9,56 +17,177 @@ const { Pool } = pg;
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required for learning feedback PostgreSQL integration tests');
 
+type Chain = { tenantId: string; auditId: string; ticket: HumanReviewTicket; reviewerDecisionId: string; reviewerId: string };
+
 describe('PostgresLearningFeedbackRepository integration', () => {
   const pool = new Pool({ connectionString: testDatabaseUrl });
   const auditRepository = new PostgresAuditRunRepository({ pool });
   const feedbackRepository = new PostgresLearningFeedbackRepository({ pool });
-  const tenantId = `tenant_learning_${Date.now()}`;
-  const auditId = `audit_learning_${Date.now()}`;
-  let reviewerDecisionId = '';
+  const prefix = randomUUID();
+  const tenants = [`tenant-a-${prefix}`, `tenant-b-${prefix}`];
+  let a1: Chain;
+  let a2: Chain;
+  let b1: Chain;
 
-  const jobPosting: JobPostingInput = { externalId: `job_learning_${Date.now()}`, title: '审核测试岗位', description: '请人工确认岗位要求。' };
-  const result: AuditResult = {
-    auditId, decision: 'MANUAL_REVIEW', riskLevel: 'HIGH', summary: '需要人工复核。', findings: [], evidence: [], suggestions: [], compliantRewrite: null, checkerResults: [], createdAt: '2026-01-01T00:00:00.000Z',
-    context: { auditId, tenantId, requestId: 'learning-feedback-test', jurisdiction: 'CN_MAINLAND', locale: 'zh-CN', platform: 'DEFAULT', ruleVersion: 'rules-v1', lawKbVersion: 'kb-v1', evaluatedAt: '2026-01-01T00:00:00.000Z' },
-  };
-
-  beforeAll(async () => {
+  async function createChain(tenantId: string, suffix: string, reviewerId: string): Promise<Chain> {
+    const auditId = `audit-${suffix}-${prefix}`;
+    const jobPosting: JobPostingInput = {
+      externalId: `job-${suffix}-${prefix}`,
+      title: `审核测试岗位 ${suffix}`,
+      description: `请人工确认岗位要求 ${suffix}。`,
+    };
+    const result: AuditResult = {
+      auditId,
+      decision: 'MANUAL_REVIEW',
+      riskLevel: 'HIGH',
+      summary: '需要人工复核。',
+      findings: [],
+      evidence: [],
+      suggestions: [],
+      compliantRewrite: null,
+      checkerResults: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      context: {
+        auditId,
+        tenantId,
+        requestId: `request-${suffix}`,
+        jurisdiction: 'CN_MAINLAND',
+        locale: 'zh-CN',
+        platform: 'DEFAULT',
+        ruleVersion: 'rules-v1',
+        lawKbVersion: 'kb-v1',
+        evaluatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    };
     await auditRepository.saveAuditRun({ tenantId, jobPosting, result });
     const ticket = await auditRepository.createHumanReviewTicket(result, jobPosting);
     if (ticket === undefined) throw new Error('Expected a manual-review ticket.');
-    const completed = await auditRepository.submitHumanReviewDecision(ticket.id, { reviewerId: 'reviewer-test', finalDecision: 'REQUEST_REVISION', feedbackType: 'VALID_RESULT', comment: '', falsePositive: false, falseNegative: false });
-    reviewerDecisionId = completed?.feedback?.id ?? '';
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(reviewerDecisionId)) throw new Error('Expected UUID human review feedback id.');
+    const completed = await auditRepository.submitHumanReviewDecision(ticket.id, {
+      reviewerId,
+      finalDecision: 'REQUEST_REVISION',
+      feedbackType: 'VALID_RESULT',
+      comment: '',
+      falsePositive: false,
+      falseNegative: false,
+    });
+    if (completed === undefined) throw new Error('Expected completed human review ticket.');
+    const reviewerDecisionId = completed.feedback?.id;
+    if (reviewerDecisionId === undefined) throw new Error('Expected human review feedback.');
+    return { tenantId, auditId, ticket: completed, reviewerDecisionId, reviewerId };
+  }
+
+  beforeAll(async () => {
+    a1 = await createChain(tenants[0]!, 'a1', 'trusted-reviewer-a');
+    a2 = await createChain(tenants[0]!, 'a2', 'trusted-reviewer-a2');
+    b1 = await createChain(tenants[1]!, 'b1', 'trusted-reviewer-b');
   });
 
   afterAll(async () => {
-    await pool.query('DELETE FROM learning_feedback_submissions WHERE tenant_id = $1', [tenantId]);
-    await pool.query('DELETE FROM audit_runs WHERE tenant_id = $1', [tenantId]);
-    await pool.query('DELETE FROM job_postings WHERE tenant_id = $1', [tenantId]);
-    await pool.end();
+    try {
+      await pool.query('DELETE FROM learning_feedback_submissions WHERE tenant_id = ANY($1)', [tenants]);
+      await pool.query('DELETE FROM audit_runs WHERE tenant_id = ANY($1)', [tenants]);
+      await pool.query('DELETE FROM job_postings WHERE tenant_id = ANY($1)', [tenants]);
+    } finally {
+      await pool.end();
+    }
   });
 
-  function record(overrides: Partial<LearningFeedbackSubmission> = {}): LearningFeedbackSubmission {
+  function record(chain: Chain, overrides: Partial<LearningFeedbackSubmission> = {}): LearningFeedbackSubmission {
     const now = '2026-01-01T00:00:00.000Z';
-    return { id: `learning_${randomUUID()}`, tenantId, auditRunId: auditId, humanReviewTicketId: auditId, reviewerDecisionId, source: 'WEB', status: 'RECEIVED', consentScope: 'TENANT_PRIVATE', consentNoticeVersion: 'notice-v1', consentedAt: now, purpose: 'quality review', retentionDays: 30, retentionExpiresAt: '2026-01-31T00:00:00.000Z', reviewerPseudonym: 'a'.repeat(64), pseudonymKeyVersion: 'test-v1', digest: randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''), sanitizedComment: 'sanitized', sanitizedEvidenceFragments: [], redactionSummary: { redactionCount: 0, needsPrivacyReview: false }, agentDecision: 'MANUAL_REVIEW', humanDecision: 'REQUEST_REVISION', ruleVersion: 'rules-v1', lawKbVersion: 'kb-v1', createdAt: now, updatedAt: now, ...overrides };
+    return {
+      id: `learning-${randomUUID()}`,
+      tenantId: chain.tenantId,
+      auditRunId: chain.auditId,
+      humanReviewTicketId: chain.ticket.id,
+      reviewerDecisionId: chain.reviewerDecisionId,
+      source: learningFeedbackSource,
+      status: 'RECEIVED',
+      consentScope: 'TENANT_PRIVATE',
+      consentNoticeVersion: learningFeedbackConsentNoticeVersion,
+      consentedAt: now,
+      purpose: learningFeedbackPurpose,
+      retentionDays: 30,
+      retentionExpiresAt: '2026-01-31T00:00:00.000Z',
+      reviewerPseudonym: 'a'.repeat(64),
+      pseudonymKeyVersion: 'test-v1',
+      digest: randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
+      sanitizedComment: 'sanitized',
+      sanitizedEvidenceFragments: [],
+      redactionSummary: { redactionCount: 0, needsPrivacyReview: false },
+      agentDecision: 'MANUAL_REVIEW',
+      humanDecision: 'REQUEST_REVISION',
+      ruleVersion: 'rules-v1',
+      lawKbVersion: 'kb-v1',
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
   }
 
-  it('has a UUID foreign key and expected quarantine indexes after full migration', async () => {
+  async function expectPgError(promise: Promise<unknown>, code: string): Promise<void> {
+    try {
+      await promise;
+      throw new Error(`Expected PostgreSQL error ${code}`);
+    } catch (error) {
+      const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+      const actual = (cause as { code?: string } | undefined)?.code ?? (error as { code?: string }).code;
+      expect(actual).toBe(code);
+    }
+  }
+
+  it('declares exact composite chain foreign keys with RESTRICT deletion', async () => {
     const type = await pool.query("SELECT data_type FROM information_schema.columns WHERE table_name = 'learning_feedback_submissions' AND column_name = 'reviewer_decision_id'");
     expect(type.rows[0]?.data_type).toBe('uuid');
-    const constraints = await pool.query("SELECT conname FROM pg_constraint WHERE conrelid = 'learning_feedback_submissions'::regclass AND contype = 'f'");
-    expect(constraints.rows.map((row) => row.conname)).toContain('learning_feedback_submissions_reviewer_decision_id_fkey');
-    const indexes = await pool.query("SELECT indexname FROM pg_indexes WHERE tablename = 'learning_feedback_submissions'");
-    const names = indexes.rows.map((row) => row.indexname);
-    expect(names).toEqual(expect.arrayContaining(['learning_feedback_idempotency_idx', 'learning_feedback_tenant_status_idx', 'learning_feedback_retention_idx']));
+    const constraints = await pool.query<{ conname: string; definition: string }>(`
+      SELECT conname, pg_get_constraintdef(oid) AS definition
+      FROM pg_constraint
+      WHERE conrelid = 'learning_feedback_submissions'::regclass AND contype = 'f'
+      ORDER BY conname
+    `);
+    expect(Object.fromEntries(constraints.rows.map((row) => [row.conname, row.definition]))).toEqual({
+      learning_feedback_audit_tenant_fkey: 'FOREIGN KEY (audit_run_id, tenant_id) REFERENCES audit_runs(id, tenant_id) ON DELETE RESTRICT',
+      learning_feedback_decision_chain_fkey: 'FOREIGN KEY (reviewer_decision_id, human_review_ticket_id, audit_run_id, tenant_id) REFERENCES human_review_feedback(id, review_ticket_id, audit_run_id, tenant_id) ON DELETE RESTRICT',
+      learning_feedback_ticket_chain_fkey: 'FOREIGN KEY (human_review_ticket_id, audit_run_id, tenant_id) REFERENCES review_tickets(id, audit_run_id, tenant_id) ON DELETE RESTRICT',
+    });
   });
 
-  it('persists, reads, lists, updates, and enforces the human-review foreign key', async () => {
-    const created = await feedbackRepository.create(record());
-    await expect(feedbackRepository.findById(created.id, tenantId)).resolves.toMatchObject({ id: created.id, reviewerDecisionId });
-    await expect(feedbackRepository.list({ tenantId, status: 'RECEIVED' })).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: created.id })]));
-    await expect(feedbackRepository.update({ ...created, status: 'WITHDRAWN', withdrawnAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' })).resolves.toMatchObject({ status: 'WITHDRAWN' });
-    await expect(feedbackRepository.create(record({ reviewerDecisionId: '00000000-0000-4000-8000-000000000099' }))).rejects.toMatchObject({ cause: { code: '23503' } });
+  it('accepts a valid chain and rejects every tenant, audit, ticket, and decision splice', async () => {
+    await expect(feedbackRepository.createIdempotent(record(a1))).resolves.toMatchObject({ tenantId: a1.tenantId, reviewerDecisionId: a1.reviewerDecisionId });
+    await expectPgError(feedbackRepository.createIdempotent(record(a1, { reviewerDecisionId: b1.reviewerDecisionId })), '23503');
+    await expectPgError(feedbackRepository.createIdempotent(record(a1, { auditRunId: a2.auditId })), '23503');
+    await expectPgError(feedbackRepository.createIdempotent(record(a1, { humanReviewTicketId: a2.ticket.id })), '23503');
+    await expectPgError(feedbackRepository.createIdempotent(record(a1, { reviewerDecisionId: a2.reviewerDecisionId })), '23503');
+  });
+
+  it('requires tenant scope for reads, owner lookup, and updates', async () => {
+    const created = await feedbackRepository.createIdempotent(record(a1));
+    await expect(feedbackRepository.findById(created.id, a1.tenantId)).resolves.toMatchObject({ id: created.id });
+    await expect(feedbackRepository.findById(created.id, b1.tenantId)).resolves.toBeUndefined();
+    await expect(feedbackRepository.findReviewerDecisionOwner(created)).resolves.toBe(a1.reviewerId);
+    const changed = { ...created, status: 'WITHDRAWN' as const, withdrawnAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' };
+    await expect(feedbackRepository.update(changed, b1.tenantId)).resolves.toBeUndefined();
+    await expect(feedbackRepository.findById(created.id, a1.tenantId)).resolves.toMatchObject({ status: 'RECEIVED' });
+    await expect(feedbackRepository.updateIfStatus(changed, a1.tenantId, ['RECEIVED', 'NEEDS_REVIEW'])).resolves.toMatchObject({ status: 'WITHDRAWN' });
+  });
+
+  it('atomically returns one row for 20 concurrent identical writes', async () => {
+    const candidate = record(a1);
+    const results = await Promise.all(Array.from({ length: 20 }, () => feedbackRepository.createIdempotent(candidate)));
+    expect(new Set(results.map((item) => item.id)).size).toBe(1);
+    expect(results.every((item) => item.id === candidate.id)).toBe(true);
+    const count = await pool.query<{ count: string }>(`
+      SELECT count(*)::text AS count FROM learning_feedback_submissions
+      WHERE tenant_id = $1 AND reviewer_decision_id = $2 AND digest = $3 AND consent_notice_version = $4
+    `, [candidate.tenantId, candidate.reviewerDecisionId, candidate.digest, candidate.consentNoticeVersion]);
+    expect(count.rows[0]?.count).toBe('1');
+  });
+
+  it('keeps the complete idempotency key and rejects untrusted notice versions', async () => {
+    const first = record(a1);
+    const second = await feedbackRepository.createIdempotent(record(a1, { digest: first.digest }));
+    const third = await feedbackRepository.createIdempotent(record(b1, { digest: first.digest }));
+    expect(second.tenantId).toBe(a1.tenantId);
+    expect(third.tenantId).toBe(b1.tenantId);
+    await expectPgError(feedbackRepository.createIdempotent(record(a1, { consentNoticeVersion: 'client-injected-version' as typeof learningFeedbackConsentNoticeVersion })), '23514');
   });
 });

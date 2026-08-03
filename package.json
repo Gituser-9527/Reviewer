@@ -24,7 +24,7 @@
     "doctor:internal-alpha": "node scripts/internal-alpha-doctor.mjs",
     "doctor:internal-alpha-readiness": "node scripts/internal-alpha-readiness-doctor.mjs",
     "alpha:local-smoke": "node scripts/internal-alpha-local-smoke.mjs",
-    "test:postgres": "powershell -ExecutionPolicy Bypass -File scripts/run-with-test-env.ps1 npx vitest run --config vitest.postgres.config.ts packages/database/src/repository.integration.test.ts packages/database/src/learning-feedback-repository.postgres.test.ts",
+    "test:postgres": "powershell -ExecutionPolicy Bypass -File scripts/run-with-test-env.ps1 npx vitest run --config vitest.postgres.config.ts packages/database/src/repository.integration.test.ts packages/database/src/learning-feedback-repository.postgres.test.ts apps/api/src/learning-feedback/learning-feedback.postgres.test.ts",
     "dev:api": "npm run build:packages && npm run dev --workspace @job-compliance/api",
     "dev:web": "npm run build:packages && npm run dev --workspace @job-compliance/web",
     "eval": "npm run build:packages && tsx --conditions=import evals/run-eval.ts",

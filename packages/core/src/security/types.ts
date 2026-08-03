@@ -6,7 +6,11 @@ export type SensitiveInfoType =
   | 'BANK_CARD'
   | 'WECHAT_ID'
   | 'ADDRESS'
-  | 'VERIFICATION_CODE';
+  | 'VERIFICATION_CODE'
+  | 'AUTHORIZATION'
+  | 'API_TOKEN'
+  | 'URL'
+  | 'DATABASE_URL';
 
 /** One detected sensitive text span. */
 export interface SensitiveInfoMatch {

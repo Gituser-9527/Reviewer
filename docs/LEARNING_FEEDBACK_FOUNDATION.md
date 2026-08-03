@@ -8,9 +8,9 @@ The required sequence is: `AuditRun → HumanReviewTicket → completed reviewer
 
 ## Consent and data minimization
 
-`NONE` is the default. V1 accepts only `TENANT_PRIVATE`; `GLOBAL_ANONYMIZED` is deliberately rejected with `GLOBAL_LEARNING_CONSENT_UNAVAILABLE`. Each stored record includes notice version, consent time, purpose, retention period, digest, redaction summary and a tenant-scoped HMAC pseudonym. It never stores a raw reviewer identity, token, Authorization value, cookie, database URL, full HTML, screenshot, full job text, full URL, or raw capture.
+`NONE` is the default. V1 accepts only `TENANT_PRIVATE`; `GLOBAL_ANONYMIZED` is deliberately rejected with `GLOBAL_LEARNING_CONSENT_UNAVAILABLE`. The authenticated API adapter fixes `source=API`, `purpose=QUALITY_IMPROVEMENT_REVIEW`, and `consentNoticeVersion=learning-feedback-v1`; clients cannot supply those values. Each stored record includes notice version, consent time, purpose, retention period, digest, redaction summary and a tenant-scoped HMAC pseudonym. It never stores a raw reviewer identity, token, Authorization value, cookie, database URL, full HTML, screenshot, full job text, full URL, or raw capture.
 
-The browser-safe preview redacts deterministically first. The API repeats redaction authoritatively, applies existing server-side sensitive-data redaction, enforces field limits, and routes ambiguous name/address/organization wording to `NEEDS_REVIEW`. Missing pseudonym-key configuration fails closed.
+The API preview and submit paths use the same canonical `packages/core/src/security/` sanitizer, enforce field limits, and route ambiguous name/address/organization wording to `NEEDS_REVIEW`. Missing pseudonym-key or server notice configuration fails closed. No browser or extension learning-feedback adapter is implemented in V1.
 
 ## Quarantine lifecycle
 
