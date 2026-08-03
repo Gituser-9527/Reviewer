@@ -12,12 +12,15 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type {
   AuditResult,
   Evidence,
   Finding,
   HumanReviewTicket,
   JobPostingInput,
+  LearningFeedbackEvent,
+  LearningFeedbackRetentionSummary,
   LearningFeedbackSubmission,
   RuleImprovementSuggestion,
 } from '@job-compliance/shared';
@@ -2680,8 +2683,54 @@ export const learningFeedbackSubmissions = pgTable(
     foreignKey({ columns: [table.humanReviewTicketId, table.auditRunId, table.tenantId], foreignColumns: [reviewTickets.id, reviewTickets.auditRunId, reviewTickets.tenantId], name: 'learning_feedback_ticket_chain_fkey' }).onDelete('restrict'),
     foreignKey({ columns: [table.reviewerDecisionId, table.humanReviewTicketId, table.auditRunId, table.tenantId], foreignColumns: [humanReviewFeedback.id, humanReviewFeedback.reviewTicketId, humanReviewFeedback.auditRunId, humanReviewFeedback.tenantId], name: 'learning_feedback_decision_chain_fkey' }).onDelete('restrict'),
     uniqueIndex('learning_feedback_idempotency_idx').on(table.tenantId, table.reviewerDecisionId, table.digest, table.consentNoticeVersion),
+    uniqueIndex('learning_feedback_id_tenant_uidx').on(table.id, table.tenantId),
     index('learning_feedback_tenant_status_idx').on(table.tenantId, table.status),
     index('learning_feedback_retention_idx').on(table.retentionExpiresAt, table.status),
     index('learning_feedback_ticket_idx').on(table.humanReviewTicketId),
   ],
+);
+
+export const learningFeedbackEvents = pgTable(
+  'learning_feedback_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    learningFeedbackId: text('learning_feedback_id').notNull(),
+    eventType: text('event_type').$type<LearningFeedbackEvent['eventType']>().notNull(),
+    fromStatus: text('from_status').$type<LearningFeedbackEvent['fromStatus']>(),
+    toStatus: text('to_status').$type<LearningFeedbackEvent['toStatus']>().notNull(),
+    actorPseudonym: text('actor_pseudonym').notNull(),
+    pseudonymKeyVersion: text('pseudonym_key_version').notNull(),
+    reasonCode: text('reason_code').$type<LearningFeedbackEvent['reasonCode']>(),
+    reasonNoteRedacted: text('reason_note_redacted'),
+    requestId: text('request_id'),
+    metadata: jsonb('metadata').$type<Record<string, never>>().default({}).notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.learningFeedbackId, table.tenantId], foreignColumns: [learningFeedbackSubmissions.id, learningFeedbackSubmissions.tenantId], name: 'learning_feedback_event_submission_tenant_fkey' }).onDelete('cascade'),
+    uniqueIndex('learning_feedback_event_submitted_uidx').on(table.learningFeedbackId).where(sql`${table.eventType} = 'SUBMITTED'`),
+    uniqueIndex('learning_feedback_event_withdrawn_uidx').on(table.learningFeedbackId).where(sql`${table.eventType} = 'WITHDRAWN'`),
+    uniqueIndex('learning_feedback_event_review_uidx').on(table.learningFeedbackId).where(sql`${table.eventType} IN ('REVIEW_APPROVED', 'REVIEW_REJECTED')`),
+    index('learning_feedback_events_tenant_feedback_idx').on(table.tenantId, table.learningFeedbackId, table.occurredAt),
+  ],
+);
+
+export const learningFeedbackRetentionRuns = pgTable(
+  'learning_feedback_retention_runs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    mode: text('mode').$type<LearningFeedbackRetentionSummary['mode']>().notNull(),
+    cutoff: timestamp('cutoff', { withTimezone: true }).notNull(),
+    batchLimit: integer('batch_limit').notNull(),
+    candidateCount: integer('candidate_count').notNull(),
+    deletedCount: integer('deleted_count').notNull(),
+    countsByStatus: jsonb('counts_by_status').$type<LearningFeedbackRetentionSummary['countsByStatus']>().default({}).notNull(),
+    anomalyCount: integer('anomaly_count').notNull(),
+    actorPseudonym: text('actor_pseudonym').notNull(),
+    pseudonymKeyVersion: text('pseudonym_key_version').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [index('learning_feedback_retention_runs_tenant_time_idx').on(table.tenantId, table.occurredAt)],
 );

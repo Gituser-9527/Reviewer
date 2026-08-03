@@ -302,7 +302,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
 
     if (error instanceof LearningFeedbackError) {
-      const statusCode = error.code === 'LEARNING_FEEDBACK_NOT_FOUND' ? 404 : error.code === 'LEARNING_FEEDBACK_WITHDRAW_FORBIDDEN' ? 403 : error.code === 'GLOBAL_LEARNING_CONSENT_UNAVAILABLE' || error.code === 'PREVIEW_DIGEST_MISMATCH' || error.code === 'LEARNING_FEEDBACK_STATE_INVALID' ? 409 : error.code === 'LEARNING_FEEDBACK_UNAVAILABLE' ? 503 : 422;
+      const statusCode = error.code === 'LEARNING_FEEDBACK_NOT_FOUND' ? 404 : error.code === 'LEARNING_FEEDBACK_WITHDRAW_FORBIDDEN' ? 403 : error.code === 'GLOBAL_LEARNING_CONSENT_UNAVAILABLE' || error.code === 'PREVIEW_DIGEST_MISMATCH' || error.code === 'LEARNING_FEEDBACK_STATE_INVALID' || error.code === 'LEARNING_FEEDBACK_STATE_CONFLICT' ? 409 : error.code === 'LEARNING_FEEDBACK_UNAVAILABLE' ? 503 : 422;
       return reply.code(statusCode).send({ requestId: request.id, error: { code: error.code, message: error.message, retryable: false } });
     }
 

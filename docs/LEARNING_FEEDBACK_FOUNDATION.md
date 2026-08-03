@@ -12,11 +12,21 @@ The required sequence is: `AuditRun → HumanReviewTicket → completed reviewer
 
 The API preview and submit paths use the same canonical `packages/core/src/security/` sanitizer, enforce field limits, and route ambiguous name/address/organization wording to `NEEDS_REVIEW`. Missing pseudonym-key or server notice configuration fails closed. No browser or extension learning-feedback adapter is implemented in V1.
 
-## Quarantine lifecycle
+## Quarantine lifecycle and governance
 
 Allowed statuses are `RECEIVED`, `NEEDS_REVIEW`, `PRIVACY_REJECTED`, `APPROVED`, `REJECTED`, `WITHDRAWN`, and reserved `PROMOTED_TO_GOLD_SET`. No status is automatically approved or promoted. The promotion endpoint explicitly returns `GOLD_SET_PROMOTION_UNAVAILABLE`.
 
-Retention cleanup must be an independently authorized, audited maintenance task; it is not an automatic runtime side effect in V1. Withdrawal marks the quarantined record withdrawn and prevents any future review use.
+Withdrawal and review use conditional state transitions. Only `RECEIVED/NEEDS_REVIEW` may be withdrawn by the original reviewer or approved/rejected by a manager. Competing or repeated reviews return a conflict; state and the single terminal review event commit in one PostgreSQL transaction.
+
+The append-only domain event stream contains only `SUBMITTED`, `WITHDRAWN`, `REVIEW_APPROVED`, and `REVIEW_REJECTED`. Actors are tenant-scoped HMAC pseudonyms with a key version; optional review notes are handled by the canonical security sanitizer. Events never store raw reviewer/administrator IDs or feedback content.
+
+Retention cleanup is an independently authorized, audited maintenance command, not an automatic runtime side effect. Dry-run and execute share one typed policy: expired quarantined and terminal non-Gold statuses are eligible, withdrawn records are eligible at `withdrawnAt`, and any reserved Gold status makes execute fail closed. Execute requires an explicit tenant, confirmation, environment guard and bounded batch, and revalidates candidates atomically. No Scheduler exists.
+
+## Implemented foundation versus remaining work
+
+Implemented: authenticated API foundation, PostgreSQL persistence and composite business-chain constraints, trusted reviewer identity, canonical server redaction, atomic idempotency, human quarantine, CAS review, append-only lifecycle events, internal retention dry-run and explicitly guarded cleanup.
+
+Not implemented: Web administration UI, Extension learning-feedback wiring, automatic retention Scheduler, complete LabelingService persistence, Gold Set, Shadow mode, training, automatic rule changes, or a human Pilot. This is not a complete learning platform.
 
 ## Access control
 

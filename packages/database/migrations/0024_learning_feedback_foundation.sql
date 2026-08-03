@@ -47,9 +47,58 @@ CREATE TABLE IF NOT EXISTS learning_feedback_submissions (
 
 CREATE UNIQUE INDEX IF NOT EXISTS learning_feedback_idempotency_idx
   ON learning_feedback_submissions (tenant_id, reviewer_decision_id, digest, consent_notice_version);
+CREATE UNIQUE INDEX IF NOT EXISTS learning_feedback_id_tenant_uidx
+  ON learning_feedback_submissions (id, tenant_id);
 CREATE INDEX IF NOT EXISTS learning_feedback_tenant_status_idx
   ON learning_feedback_submissions (tenant_id, status);
 CREATE INDEX IF NOT EXISTS learning_feedback_retention_idx
   ON learning_feedback_submissions (retention_expires_at, status);
 CREATE INDEX IF NOT EXISTS learning_feedback_ticket_idx
   ON learning_feedback_submissions (human_review_ticket_id);
+
+CREATE TABLE IF NOT EXISTS learning_feedback_events (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  learning_feedback_id TEXT NOT NULL,
+  event_type TEXT NOT NULL CHECK (event_type IN ('SUBMITTED', 'WITHDRAWN', 'REVIEW_APPROVED', 'REVIEW_REJECTED')),
+  from_status TEXT,
+  to_status TEXT NOT NULL,
+  actor_pseudonym TEXT NOT NULL,
+  pseudonym_key_version TEXT NOT NULL,
+  reason_code TEXT CHECK (reason_code IN ('QUALITY_VALIDATED', 'INSUFFICIENT_QUALITY', 'PRIVACY_CONCERN', 'OUT_OF_SCOPE', 'OTHER')),
+  reason_note_redacted TEXT,
+  request_id TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT learning_feedback_event_submission_tenant_fkey
+    FOREIGN KEY (learning_feedback_id, tenant_id)
+    REFERENCES learning_feedback_submissions (id, tenant_id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS learning_feedback_event_submitted_uidx
+  ON learning_feedback_events (learning_feedback_id) WHERE event_type = 'SUBMITTED';
+CREATE UNIQUE INDEX IF NOT EXISTS learning_feedback_event_withdrawn_uidx
+  ON learning_feedback_events (learning_feedback_id) WHERE event_type = 'WITHDRAWN';
+CREATE UNIQUE INDEX IF NOT EXISTS learning_feedback_event_review_uidx
+  ON learning_feedback_events (learning_feedback_id)
+  WHERE event_type IN ('REVIEW_APPROVED', 'REVIEW_REJECTED');
+CREATE INDEX IF NOT EXISTS learning_feedback_events_tenant_feedback_idx
+  ON learning_feedback_events (tenant_id, learning_feedback_id, occurred_at);
+
+CREATE TABLE IF NOT EXISTS learning_feedback_retention_runs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('DRY_RUN', 'EXECUTE')),
+  cutoff TIMESTAMPTZ NOT NULL,
+  batch_limit INTEGER NOT NULL CHECK (batch_limit > 0),
+  candidate_count INTEGER NOT NULL CHECK (candidate_count >= 0),
+  deleted_count INTEGER NOT NULL CHECK (deleted_count >= 0),
+  counts_by_status JSONB NOT NULL DEFAULT '{}'::jsonb,
+  anomaly_count INTEGER NOT NULL CHECK (anomaly_count >= 0),
+  actor_pseudonym TEXT NOT NULL,
+  pseudonym_key_version TEXT NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS learning_feedback_retention_runs_tenant_time_idx
+  ON learning_feedback_retention_runs (tenant_id, occurred_at);

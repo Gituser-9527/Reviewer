@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HumanReviewStore } from '../reviews/store.js';
 import { complianceManagerIdentity, reviewerIdentity } from '../test-helpers/auth.js';
+import { createAuthServices } from '../auth/service.js';
 import { buildApp } from '../app.js';
 import { InMemoryLearningFeedbackRepository, LearningFeedbackService } from './service.js';
 import { ticket } from './test-fixture.js';
@@ -24,9 +25,10 @@ function store(): HumanReviewStore {
 
 function app() {
   const repository = new InMemoryLearningFeedbackRepository({ [ticket.feedback!.id]: ticket.feedback!.reviewerId });
-  const instance = buildApp({ reviewStore: store(), learningFeedbackService: new LearningFeedbackService(repository, 'test-key') });
+  const authServices = createAuthServices();
+  const instance = buildApp({ reviewStore: store(), learningFeedbackService: new LearningFeedbackService(repository, 'test-key'), authServices });
   apps.push(instance);
-  return { instance, repository };
+  return { instance, repository, authServices };
 }
 
 const body = { consentScope: 'TENANT_PRIVATE', retentionDays: 30, comment: 'call 13800138000', evidenceFragments: ['safe'] };
@@ -78,7 +80,7 @@ describe('learning feedback routes', () => {
   });
 
   it('allows only the trusted decision owner to withdraw through the API', async () => {
-    const { instance } = app();
+    const { instance, repository, authServices } = app();
     const preview = await instance.inject({ method: 'POST', url: `/api/reviews/${ticket.id}/learning-feedback/preview`, headers: ownerHeaders, payload: body });
     const submitted = await instance.inject({ method: 'POST', url: `/api/reviews/${ticket.id}/learning-feedback`, headers: ownerHeaders, payload: { ...body, digest: preview.json().digest, explicitConfirmation: true } });
     const id = submitted.json().id as string;
@@ -91,6 +93,41 @@ describe('learning feedback routes', () => {
     const owner = await instance.inject({ method: 'POST', url: `/api/learning-feedback/${id}/withdraw`, headers: ownerHeaders });
     expect(owner.statusCode).toBe(200);
     expect(owner.json().status).toBe('WITHDRAWN');
+    expect((await repository.listEvents(id, 'tenant-a')).map((event) => event.eventType)).toEqual(['SUBMITTED', 'WITHDRAWN']);
+    const log = authServices.auditLogService.list({ tenantId: 'tenant-a' }).find((entry) => entry.operation === 'learning_feedback_withdrawn');
+    expect(log).toMatchObject({ before: { status: 'RECEIVED' }, after: { status: 'WITHDRAWN' } });
+    expect(JSON.stringify(log)).not.toContain('13800138000');
+  });
+
+  it('atomically accepts one competing admin review and records one sanitized event', async () => {
+    const { instance, repository, authServices } = app();
+    const safeBody = { ...body, comment: 'review candidate' };
+    const preview = await instance.inject({ method: 'POST', url: `/api/reviews/${ticket.id}/learning-feedback/preview`, headers: ownerHeaders, payload: safeBody });
+    const submitted = await instance.inject({ method: 'POST', url: `/api/reviews/${ticket.id}/learning-feedback`, headers: ownerHeaders, payload: { ...safeBody, digest: preview.json().digest, explicitConfirmation: true } });
+    const id = submitted.json().id as string;
+    const marker = 'LEARNING_REASON_SECRET_174';
+    const [approve, reject] = await Promise.all([
+      instance.inject({ method: 'POST', url: `/api/learning-feedback/${id}/review`, headers: { ...complianceManagerIdentity('tenant-a'), 'x-user-id': 'manager-a' }, payload: { status: 'APPROVED', reasonCode: 'QUALITY_VALIDATED', reasonNote: `Authorization: Bearer ${marker}` } }),
+      instance.inject({ method: 'POST', url: `/api/learning-feedback/${id}/review`, headers: { ...complianceManagerIdentity('tenant-a'), 'x-user-id': 'manager-b' }, payload: { status: 'REJECTED', reasonCode: 'INSUFFICIENT_QUALITY', reasonNote: `access_token=${marker}` } }),
+    ]);
+    expect([approve.statusCode, reject.statusCode].sort()).toEqual([200, 409]);
+    const events = await repository.listEvents(id, 'tenant-a');
+    expect(events.filter((event) => event.eventType.startsWith('REVIEW_'))).toHaveLength(1);
+    expect(JSON.stringify(events)).not.toContain(marker);
+    expect(JSON.stringify(events)).not.toContain('manager-a');
+    expect(JSON.stringify(events)).not.toContain('manager-b');
+    const reviewLogs = authServices.auditLogService.list({ tenantId: 'tenant-a' }).filter((entry) => entry.operation.startsWith('learning_feedback_review_'));
+    expect(reviewLogs).toHaveLength(1);
+    expect(reviewLogs[0]).toMatchObject({ before: { status: 'RECEIVED' } });
+    expect(JSON.stringify(reviewLogs)).not.toContain(marker);
+    const repeat = await instance.inject({ method: 'POST', url: `/api/learning-feedback/${id}/review`, headers: complianceManagerIdentity('tenant-a'), payload: { status: 'APPROVED', reasonCode: 'QUALITY_VALIDATED' } });
+    expect(repeat.statusCode).toBe(409);
+  });
+
+  it('validates review reason compatibility', async () => {
+    const { instance } = app();
+    const response = await instance.inject({ method: 'POST', url: '/api/learning-feedback/unused/review', headers: complianceManagerIdentity('tenant-a'), payload: { status: 'APPROVED', reasonCode: 'PRIVACY_CONCERN' } });
+    expect(response.statusCode).toBe(400);
   });
 
   it('authenticates and authorizes the unavailable gold-set boundary', async () => {

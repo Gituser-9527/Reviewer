@@ -69,6 +69,9 @@ describe('LearningFeedbackService', () => {
     expect(new Set(results.map((record) => record.id)).size).toBe(1);
     expect(results[0]).toMatchObject({ source: 'API', purpose: learningFeedbackPurpose, consentNoticeVersion: learningFeedbackConsentNoticeVersion, status: 'RECEIVED' });
     expect(results[0]?.reviewerPseudonym).not.toContain('reviewer-a');
+    const events = await subject.listEvents(results[0]!.id, 'tenant-a');
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ eventType: 'SUBMITTED', toStatus: 'RECEIVED' });
   });
 
   it('fails closed for global consent, a wrong reviewer and a changed preview', async () => {
@@ -87,6 +90,7 @@ describe('LearningFeedbackService', () => {
     const withdrawn = await subject.withdraw(received.id, 'tenant-a', 'reviewer-a');
     expect(withdrawn.status).toBe('WITHDRAWN');
     await expect(subject.withdraw(received.id, 'tenant-a', 'reviewer-a')).resolves.toMatchObject({ status: 'WITHDRAWN' });
+    expect((await subject.listEvents(received.id, 'tenant-a')).map((event) => event.eventType)).toEqual(['SUBMITTED', 'WITHDRAWN']);
 
     const needsReviewInput = input('地址北京市朝阳区幸福路88号');
     const needsReviewPreview = subject.preview(ticket, needsReviewInput);
@@ -101,15 +105,39 @@ describe('LearningFeedbackService', () => {
       const candidateInput = input(`candidate-${status}`);
       const preview = subject.preview(ticket, candidateInput);
       const record = await subject.submit(ticket, 'reviewer-a', { ...candidateInput, digest: preview.digest, explicitConfirmation: true });
-      await subject.review(record.id, 'tenant-a', status);
+      await subject.review(record.id, 'tenant-a', 'manager-a', status, status === 'APPROVED' ? 'QUALITY_VALIDATED' : 'INSUFFICIENT_QUALITY');
       await expect(subject.withdraw(record.id, 'tenant-a', 'reviewer-a')).rejects.toMatchObject({ code: 'LEARNING_FEEDBACK_STATE_INVALID' });
     }
     for (const status of ['PRIVACY_REJECTED', 'PROMOTED_TO_GOLD_SET'] as LearningFeedbackStatus[]) {
       const candidateInput = input(`candidate-${status}`);
       const preview = subject.preview(ticket, candidateInput);
       const record = await subject.submit(ticket, 'reviewer-a', { ...candidateInput, digest: preview.digest, explicitConfirmation: true });
-      await repository.update({ ...record, status }, 'tenant-a');
+      repository.seedForTest({ ...record, status });
       await expect(subject.withdraw(record.id, 'tenant-a', 'reviewer-a')).rejects.toMatchObject({ code: 'LEARNING_FEEDBACK_STATE_INVALID' });
     }
+  });
+
+  it('allows one atomic review, rejects repeats and sanitizes the immutable reason event', async () => {
+    const { subject } = setup();
+    const preview = subject.preview(ticket, input('review-candidate'));
+    const record = await subject.submit(ticket, 'reviewer-a', { ...input('review-candidate'), digest: preview.digest, explicitConfirmation: true });
+    const marker = 'LEARNING_REASON_SECRET_174';
+    const [approved, rejected] = await Promise.allSettled([
+      subject.review(record.id, 'tenant-a', 'manager-a', 'APPROVED', 'QUALITY_VALIDATED', `Authorization: Bearer ${marker}`),
+      subject.review(record.id, 'tenant-a', 'manager-b', 'REJECTED', 'INSUFFICIENT_QUALITY', `access_token=${marker}`),
+    ]);
+    expect([approved, rejected].filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect([approved, rejected].filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const events = await subject.listEvents(record.id, 'tenant-a');
+    expect(events.filter((event) => event.eventType.startsWith('REVIEW_'))).toHaveLength(1);
+    expect(JSON.stringify(events)).not.toContain(marker);
+    expect(JSON.stringify(events)).not.toContain('manager-a');
+    await expect(subject.review(record.id, 'tenant-a', 'manager-a', 'APPROVED', 'QUALITY_VALIDATED')).rejects.toMatchObject({ code: 'LEARNING_FEEDBACK_STATE_CONFLICT' });
+    await expect(subject.listEvents(record.id, 'tenant-b')).resolves.toEqual([]);
+  });
+
+  it('enforces review reason compatibility', async () => {
+    const { subject } = setup();
+    await expect(subject.review('missing', 'tenant-a', 'manager-a', 'APPROVED', 'PRIVACY_CONCERN')).rejects.toMatchObject({ code: 'LEARNING_FEEDBACK_REVIEW_REASON_INVALID' });
   });
 });

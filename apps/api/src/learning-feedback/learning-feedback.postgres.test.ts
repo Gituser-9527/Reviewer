@@ -91,5 +91,43 @@ describe('learning feedback API PostgreSQL trust chain', () => {
     expect(persisted.rows[0]?.stored).not.toContain('person@example.com');
     expect(persisted.rows[0]?.stored).not.toContain('110101199001011234');
     expect(persisted.rows[0]?.stored).not.toContain('trusted-reviewer-a');
+
+    const feedbackId = ids[0]!;
+    const submittedEvents = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM learning_feedback_events
+       WHERE tenant_id = $1 AND learning_feedback_id = $2 AND event_type = 'SUBMITTED'`,
+      [tenantId, feedbackId],
+    );
+    expect(submittedEvents.rows[0]?.count).toBe('1');
+
+    const managerBase = { 'x-user-role': 'COMPLIANCE_MANAGER', 'x-tenant-id': tenantId };
+    const [approve, reject] = await Promise.all([
+      app.inject({
+        method: 'POST', url: `/api/learning-feedback/${feedbackId}/review`,
+        headers: { ...managerBase, 'x-user-id': 'manager-a' },
+        payload: { status: 'APPROVED', reasonCode: 'QUALITY_VALIDATED', reasonNote: `Authorization: Bearer ${marker}` },
+      }),
+      app.inject({
+        method: 'POST', url: `/api/learning-feedback/${feedbackId}/review`,
+        headers: { ...managerBase, 'x-user-id': 'manager-b' },
+        payload: { status: 'REJECTED', reasonCode: 'INSUFFICIENT_QUALITY', reasonNote: `access_token=${marker}` },
+      }),
+    ]);
+    expect([approve.statusCode, reject.statusCode].sort()).toEqual([200, 409]);
+    const storedReview = await pool.query<{ status: string; event_count: string; event_data: string }>(`
+      SELECT submission.status,
+             count(event.id) FILTER (WHERE event.event_type IN ('REVIEW_APPROVED', 'REVIEW_REJECTED'))::text AS event_count,
+             coalesce(string_agg(event.actor_pseudonym || ' ' || coalesce(event.reason_note_redacted, ''), ' '), '') AS event_data
+      FROM learning_feedback_submissions submission
+      LEFT JOIN learning_feedback_events event
+        ON event.learning_feedback_id = submission.id AND event.tenant_id = submission.tenant_id
+      WHERE submission.id = $1 AND submission.tenant_id = $2
+      GROUP BY submission.status
+    `, [feedbackId, tenantId]);
+    expect(['APPROVED', 'REJECTED']).toContain(storedReview.rows[0]?.status);
+    expect(storedReview.rows[0]?.event_count).toBe('1');
+    expect(storedReview.rows[0]?.event_data).not.toContain(marker);
+    expect(storedReview.rows[0]?.event_data).not.toContain('manager-a');
+    expect(storedReview.rows[0]?.event_data).not.toContain('manager-b');
   });
 });

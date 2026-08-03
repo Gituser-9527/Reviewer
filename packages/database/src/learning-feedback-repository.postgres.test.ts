@@ -8,6 +8,7 @@ import {
   type AuditResult,
   type HumanReviewTicket,
   type JobPostingInput,
+  type LearningFeedbackEvent,
   type LearningFeedbackSubmission,
 } from '@job-compliance/shared';
 import { PostgresLearningFeedbackRepository } from './learning-feedback-repository.js';
@@ -124,6 +125,10 @@ describe('PostgresLearningFeedbackRepository integration', () => {
     };
   }
 
+  function event(candidate: LearningFeedbackSubmission, overrides: Partial<LearningFeedbackEvent> = {}): LearningFeedbackEvent {
+    return { id: `event-${randomUUID()}`, tenantId: candidate.tenantId, learningFeedbackId: candidate.id, eventType: 'SUBMITTED', toStatus: candidate.status, actorPseudonym: 'b'.repeat(64), pseudonymKeyVersion: 'test-v1', occurredAt: candidate.createdAt, ...overrides };
+  }
+
   async function expectPgError(promise: Promise<unknown>, code: string): Promise<void> {
     try {
       await promise;
@@ -149,30 +154,31 @@ describe('PostgresLearningFeedbackRepository integration', () => {
       learning_feedback_decision_chain_fkey: 'FOREIGN KEY (reviewer_decision_id, human_review_ticket_id, audit_run_id, tenant_id) REFERENCES human_review_feedback(id, review_ticket_id, audit_run_id, tenant_id) ON DELETE RESTRICT',
       learning_feedback_ticket_chain_fkey: 'FOREIGN KEY (human_review_ticket_id, audit_run_id, tenant_id) REFERENCES review_tickets(id, audit_run_id, tenant_id) ON DELETE RESTRICT',
     });
+    const eventConstraint = await pool.query<{ definition: string }>("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname = 'learning_feedback_event_submission_tenant_fkey'");
+    expect(eventConstraint.rows[0]?.definition).toBe('FOREIGN KEY (learning_feedback_id, tenant_id) REFERENCES learning_feedback_submissions(id, tenant_id) ON DELETE CASCADE');
   });
 
   it('accepts a valid chain and rejects every tenant, audit, ticket, and decision splice', async () => {
-    await expect(feedbackRepository.createIdempotent(record(a1))).resolves.toMatchObject({ tenantId: a1.tenantId, reviewerDecisionId: a1.reviewerDecisionId });
-    await expectPgError(feedbackRepository.createIdempotent(record(a1, { reviewerDecisionId: b1.reviewerDecisionId })), '23503');
-    await expectPgError(feedbackRepository.createIdempotent(record(a1, { auditRunId: a2.auditId })), '23503');
-    await expectPgError(feedbackRepository.createIdempotent(record(a1, { humanReviewTicketId: a2.ticket.id })), '23503');
-    await expectPgError(feedbackRepository.createIdempotent(record(a1, { reviewerDecisionId: a2.reviewerDecisionId })), '23503');
+    const valid = record(a1);
+    await expect(feedbackRepository.createIdempotent(valid, event(valid))).resolves.toMatchObject({ tenantId: a1.tenantId, reviewerDecisionId: a1.reviewerDecisionId });
+    for (const invalid of [record(a1, { reviewerDecisionId: b1.reviewerDecisionId }), record(a1, { auditRunId: a2.auditId }), record(a1, { humanReviewTicketId: a2.ticket.id }), record(a1, { reviewerDecisionId: a2.reviewerDecisionId })]) await expectPgError(feedbackRepository.createIdempotent(invalid, event(invalid)), '23503');
   });
 
   it('requires tenant scope for reads, owner lookup, and updates', async () => {
-    const created = await feedbackRepository.createIdempotent(record(a1));
+    const candidate = record(a1); const created = await feedbackRepository.createIdempotent(candidate, event(candidate));
     await expect(feedbackRepository.findById(created.id, a1.tenantId)).resolves.toMatchObject({ id: created.id });
     await expect(feedbackRepository.findById(created.id, b1.tenantId)).resolves.toBeUndefined();
     await expect(feedbackRepository.findReviewerDecisionOwner(created)).resolves.toBe(a1.reviewerId);
     const changed = { ...created, status: 'WITHDRAWN' as const, withdrawnAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' };
-    await expect(feedbackRepository.update(changed, b1.tenantId)).resolves.toBeUndefined();
+    await expect(feedbackRepository.withdrawIfQuarantined(changed, b1.tenantId, event(changed, { tenantId: b1.tenantId, eventType: 'WITHDRAWN', fromStatus: 'RECEIVED', toStatus: 'WITHDRAWN' }))).resolves.toBeUndefined();
     await expect(feedbackRepository.findById(created.id, a1.tenantId)).resolves.toMatchObject({ status: 'RECEIVED' });
-    await expect(feedbackRepository.updateIfStatus(changed, a1.tenantId, ['RECEIVED', 'NEEDS_REVIEW'])).resolves.toMatchObject({ status: 'WITHDRAWN' });
+    await expect(feedbackRepository.withdrawIfQuarantined(changed, a1.tenantId, event(changed, { eventType: 'WITHDRAWN', fromStatus: 'RECEIVED', toStatus: 'WITHDRAWN' }))).resolves.toMatchObject({ status: 'WITHDRAWN' });
   });
 
   it('atomically returns one row for 20 concurrent identical writes', async () => {
     const candidate = record(a1);
-    const results = await Promise.all(Array.from({ length: 20 }, () => feedbackRepository.createIdempotent(candidate)));
+    const submittedEvent = event(candidate);
+    const results = await Promise.all(Array.from({ length: 20 }, () => feedbackRepository.createIdempotent(candidate, submittedEvent)));
     expect(new Set(results.map((item) => item.id)).size).toBe(1);
     expect(results.every((item) => item.id === candidate.id)).toBe(true);
     const count = await pool.query<{ count: string }>(`
@@ -180,14 +186,39 @@ describe('PostgresLearningFeedbackRepository integration', () => {
       WHERE tenant_id = $1 AND reviewer_decision_id = $2 AND digest = $3 AND consent_notice_version = $4
     `, [candidate.tenantId, candidate.reviewerDecisionId, candidate.digest, candidate.consentNoticeVersion]);
     expect(count.rows[0]?.count).toBe('1');
+    await expect(feedbackRepository.listEvents(candidate.id, candidate.tenantId)).resolves.toHaveLength(1);
   });
 
   it('keeps the complete idempotency key and rejects untrusted notice versions', async () => {
     const first = record(a1);
-    const second = await feedbackRepository.createIdempotent(record(a1, { digest: first.digest }));
-    const third = await feedbackRepository.createIdempotent(record(b1, { digest: first.digest }));
+    const secondRecord = record(a1, { digest: first.digest }); const second = await feedbackRepository.createIdempotent(secondRecord, event(secondRecord));
+    const thirdRecord = record(b1, { digest: first.digest }); const third = await feedbackRepository.createIdempotent(thirdRecord, event(thirdRecord));
     expect(second.tenantId).toBe(a1.tenantId);
     expect(third.tenantId).toBe(b1.tenantId);
-    await expectPgError(feedbackRepository.createIdempotent(record(a1, { consentNoticeVersion: 'client-injected-version' as typeof learningFeedbackConsentNoticeVersion })), '23514');
+    const invalid = record(a1, { consentNoticeVersion: 'client-injected-version' as typeof learningFeedbackConsentNoticeVersion });
+    await expectPgError(feedbackRepository.createIdempotent(invalid, event(invalid)), '23514');
+  });
+
+  it('commits one review event with the CAS winner and rejects the concurrent loser', async () => {
+    const candidate = record(a1); const created = await feedbackRepository.createIdempotent(candidate, event(candidate));
+    const approved = { ...created, status: 'APPROVED' as const, updatedAt: new Date().toISOString() };
+    const rejected = { ...created, status: 'REJECTED' as const, updatedAt: new Date().toISOString() };
+    const [left, right] = await Promise.all([
+      feedbackRepository.reviewIfQuarantined(approved, a1.tenantId, event(approved, { eventType: 'REVIEW_APPROVED', fromStatus: 'RECEIVED', toStatus: 'APPROVED', reasonCode: 'QUALITY_VALIDATED' })),
+      feedbackRepository.reviewIfQuarantined(rejected, a1.tenantId, event(rejected, { eventType: 'REVIEW_REJECTED', fromStatus: 'RECEIVED', toStatus: 'REJECTED', reasonCode: 'INSUFFICIENT_QUALITY' })),
+    ]);
+    expect([left, right].filter(Boolean)).toHaveLength(1);
+    const final = await feedbackRepository.findById(created.id, a1.tenantId);
+    expect(final?.status).toBe(left?.status ?? right?.status);
+    const events = await feedbackRepository.listEvents(created.id, a1.tenantId);
+    expect(events.filter((item) => item.eventType.startsWith('REVIEW_'))).toHaveLength(1);
+    await expect(feedbackRepository.listEvents(created.id, b1.tenantId)).resolves.toEqual([]);
+  });
+
+  it('rolls back the state if the event insert fails', async () => {
+    const candidate = record(a1); await feedbackRepository.createIdempotent(candidate, event(candidate, { id: 'event-rollback-anchor' }));
+    const approved = { ...candidate, status: 'APPROVED' as const, updatedAt: new Date().toISOString() };
+    await expectPgError(feedbackRepository.reviewIfQuarantined(approved, a1.tenantId, event(approved, { id: 'event-rollback-anchor', eventType: 'REVIEW_APPROVED', fromStatus: 'RECEIVED', toStatus: 'APPROVED', reasonCode: 'QUALITY_VALIDATED' })), '23505');
+    await expect(feedbackRepository.findById(candidate.id, a1.tenantId)).resolves.toMatchObject({ status: 'RECEIVED' });
   });
 });
