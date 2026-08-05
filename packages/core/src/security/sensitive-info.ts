@@ -1,4 +1,5 @@
 import { createHash, createHmac } from 'node:crypto';
+import { learningFeedbackRequestIdMaxLength, learningFeedbackRequestIdPattern } from '@job-compliance/shared';
 import type { LLMMessage } from '../llm/types.js';
 import type { SanitizeAuditLogOptions, SensitiveInfoMatch, SensitiveInfoType } from './types.js';
 
@@ -166,6 +167,13 @@ export function sanitizeSensitiveText(text: string): {
 /** Creates a deterministic SHA-256 hash for sensitive values or structured payloads. */
 export function hashSensitiveValue(value: unknown): string {
   return createHash('sha256').update(stableSerialize(value)).digest('hex');
+}
+
+/** Keeps safe correlation IDs verbatim and hashes all other values into a bounded token. */
+export function sanitizeCorrelationId(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.length <= learningFeedbackRequestIdMaxLength && learningFeedbackRequestIdPattern.test(value)) return value;
+  return `sha256:${hashSensitiveValue(value)}`;
 }
 
 /** Creates a tenant-scoped keyed pseudonym without exposing the source identity. */

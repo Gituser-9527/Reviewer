@@ -1295,10 +1295,10 @@ Beta 交付包是试运行运营层能力，不应直接改变审核结论；所
 
 ## 7. Learning Feedback V1 数据治理契约
 
-`learning_feedback_submissions` 是租户私有 Quarantine 记录。它通过复合唯一键和复合外键独立保证 `tenant_id → audit_run_id → human_review_ticket_id → reviewer_decision_id` 属于同一业务链；所有外键删除行为为 `RESTRICT`。幂等唯一键为 `(tenant_id, reviewer_decision_id, digest, consent_notice_version)`，普通查询和状态更新必须同时携带 `id` 与 `tenant_id`。
+`learning_feedback_submissions` 是租户私有 Quarantine 记录。它通过复合唯一键和复合外键独立保证 `tenant_id → audit_run_id → human_review_ticket_id → reviewer_decision_id` 属于同一业务链；所有外键删除行为为 `RESTRICT`。幂等唯一键为 `(tenant_id, reviewer_decision_id, digest, consent_notice_version)`，普通查询和状态更新必须同时携带 `id` 与 `tenant_id`。`governance_version` 在每次 Review/Withdraw 迁移时递增，并与数据库 `operation_started_at` fence 一起避免同一批 Retention 同时删除刚完成治理的记录。
 
-`learning_feedback_events` 是仅追加的领域生命周期表，事件类型仅为 `SUBMITTED`、`WITHDRAWN`、`REVIEW_APPROVED`、`REVIEW_REJECTED`。复合外键 `(learning_feedback_id, tenant_id)` 指向 submission，删除行为为 `CASCADE`，避免 Retention 后保留正文关联的孤立事件。局部唯一索引保证一次提交、一次撤回和一个终态审批事件；`(tenant_id, learning_feedback_id, occurred_at)` 支持租户内追踪。事件只保存 tenant-scoped HMAC Actor 伪名、key version、受控 reason code、脱敏 note 和安全 request ID，不保存原始身份或请求正文。
+`learning_feedback_events` 在 submission 生命周期内通过应用 Repository 只追加：普通业务代码不更新旧事件，但这不是 WORM 或法律级不可篡改日志，数据库维护角色不属于该应用契约；授权 Retention 删除主体时事件按 `CASCADE` 一并删除。Repository 内部构造事件，数据库 trigger 校验当前 submission 状态、上一个事件、from/to、event type、reason matrix 与事件时间。request ID 最长 128 字符且只允许安全 correlation 字符，其他输入在持久化前哈希。局部唯一索引保证一次提交、一次撤回和一个终态审批事件。
 
-`learning_feedback_retention_runs` 保存最小化运行摘要：tenant、模式、cutoff、batch、候选/删除数量、按状态数量、异常数量、执行者伪名和时间；不保存 submission ID 列表、payload、comment、evidence、digest 或数据库参数。既有 `audit_operation_logs` 同步保存同等最小化的安全操作摘要。
+`learning_feedback_retention_runs` 保存最小化运行摘要：run ID、tenant、模式、`SUCCEEDED/ANOMALY/FAILED`、受控 failure code、cutoff、数据库事务开始时间、batch、候选/删除数量、按状态数量、异常数量、执行者伪名和时间；不保存 submission ID、payload、comment、evidence、digest 或数据库参数。事务型权威 Audit Writer 通过 `packages/core/src/security/` 清洗同一最小 DTO，并以同一 run ID 写入 `audit_operation_logs`。
 
-Retention V1 的唯一状态策略为：`RECEIVED/NEEDS_REVIEW/APPROVED/REJECTED/PRIVACY_REJECTED` 在 `retention_expires_at <= cutoff` 时成为候选；`WITHDRAWN` 在 `withdrawn_at <= cutoff` 时立即成为候选；`PROMOTED_TO_GOLD_SET` 永不由 V1 删除，execute 遇到该状态即整体回滚并报告 anomaly。清理使用 tenant-scoped、有界事务 CTE、`FOR UPDATE SKIP LOCKED` 和删除时谓词复核；事件随 submission 级联删除。
+Retention V1 的唯一状态策略为：`RECEIVED/NEEDS_REVIEW/APPROVED/REJECTED/PRIVACY_REJECTED` 在 `retention_expires_at <= cutoff` 时成为候选；`WITHDRAWN` 在 `withdrawn_at <= cutoff` 时立即成为候选；`PROMOTED_TO_GOLD_SET` 永不删除，并阻塞该 tenant 的整个 execute。清理使用 tenant-scoped、有界 candidate/version snapshot、`FOR UPDATE SKIP LOCKED` 和删除时谓词复核。Gold anomaly 删除数为 0，并在独立安全事务中保存 `ANOMALY` run 和 Audit Log；恢复只能由尚未实现的人工生产治理流程处理，系统不会自动删除或修改 Gold。

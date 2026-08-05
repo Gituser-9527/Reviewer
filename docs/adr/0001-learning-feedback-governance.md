@@ -9,9 +9,9 @@ Learning Feedback links an authenticated human decision to privacy-quarantined q
 
 ## Decision
 
-V1 remains tenant-private. PostgreSQL composite constraints bind the audit run, review ticket and reviewer decision. Submit is atomic and idempotent. Withdraw and manager review use tenant-scoped compare-and-set transitions, and each successful transition writes one append-only, pseudonymous domain event in the same transaction.
+V1 remains tenant-private. PostgreSQL composite constraints bind the audit run, review ticket and reviewer decision. Submit is atomic and idempotent. Withdraw and manager review lock the row and let the Repository derive a pseudonymous event from the database-real old state; CHECK constraints and a trigger validate the event chain. Events are application-append-only during the submission lifecycle, not WORM, and authorized Retention deletes them with the parent.
 
-Retention has one typed policy: eligible non-Gold records expire at the policy time, withdrawn records are immediately eligible at `withdrawnAt`, and reserved Gold records make execute fail closed. Dry-run and execute are explicit internal commands; execute additionally requires confirmation, an environment guard and a bounded tenant-scoped batch. There is no all-tenant mode or Scheduler.
+Retention has one typed policy and a database-time/governance-version fence against concurrent transitions. It uses a dedicated database URL and strict parser. Execute requires a target-bound confirmation and is allowed only in explicit test/development environments; production execute remains unavailable. A Gold anomaly blocks the tenant, deletes zero records, and persists a minimal anomaly run/audit in a separate transaction. There is no automatic recovery, all-tenant mode or Scheduler.
 
 ## Consequences
 

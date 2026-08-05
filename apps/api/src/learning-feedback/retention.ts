@@ -1,4 +1,5 @@
-import { pseudonymizeSensitiveValue } from '@job-compliance/core';
+import { randomUUID } from 'node:crypto';
+import { hashSensitiveValue, pseudonymizeSensitiveValue } from '@job-compliance/core';
 import type { LearningFeedbackRepository } from '@job-compliance/database';
 import type { LearningFeedbackRetentionSummary } from '@job-compliance/shared';
 import { LearningFeedbackError } from './service.js';
@@ -9,8 +10,15 @@ export interface RetentionCommand {
   cutoff: Date;
   batchLimit: number;
   actorUserId: string;
+  environment: 'test' | 'development' | 'production';
+  databaseName: string;
   confirm: boolean;
+  confirmationTarget?: string;
   executeEnabled: boolean;
+}
+
+export function buildRetentionConfirmationTarget(command: Pick<RetentionCommand, 'tenantId' | 'cutoff' | 'batchLimit' | 'environment' | 'databaseName'>): string {
+  return `retention:${hashSensitiveValue({ tenantId: command.tenantId, cutoff: command.cutoff.toISOString(), batchLimit: command.batchLimit, environment: command.environment, databaseName: command.databaseName })}`;
 }
 
 export class LearningFeedbackRetentionService {
@@ -26,6 +34,7 @@ export class LearningFeedbackRetentionService {
     validateRetentionCommand(command);
     const occurredAt = new Date();
     const input = {
+      runId: `learning_feedback_retention_${randomUUID()}`,
       tenantId: command.tenantId,
       cutoff: command.cutoff,
       batchLimit: command.batchLimit,
@@ -34,16 +43,9 @@ export class LearningFeedbackRetentionService {
       auditActorId: command.actorUserId,
       occurredAt,
     };
-    try {
-      return command.mode === 'DRY_RUN'
-        ? await this.repository.previewRetention(input)
-        : await this.repository.executeRetention(input);
-    } catch (error) {
-      if (error instanceof Error && error.message === 'LEARNING_FEEDBACK_RETENTION_GOLD_SET_ANOMALY') {
-        throw new LearningFeedbackError('LEARNING_FEEDBACK_RETENTION_ANOMALY', 'Retention stopped because an unavailable Gold Set state was found.');
-      }
-      throw error;
-    }
+    return command.mode === 'DRY_RUN'
+      ? await this.repository.previewRetention(input)
+      : await this.repository.executeRetention(input);
   }
 }
 
@@ -52,5 +54,8 @@ export function validateRetentionCommand(command: RetentionCommand): void {
   if (!Number.isInteger(command.batchLimit) || command.batchLimit < 1 || command.batchLimit > 500) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention batch limit must be between 1 and 500.');
   if (!Number.isFinite(command.cutoff.getTime())) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention cutoff is invalid.');
   if (!command.actorUserId.trim()) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention requires an authenticated maintenance actor.');
+  if (!command.databaseName.trim()) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention requires a verified database target.');
+  if (command.mode === 'EXECUTE' && command.environment === 'production') throw new LearningFeedbackError('LEARNING_FEEDBACK_RETENTION_PRODUCTION_DISABLED', 'Production Retention execute is unavailable until separate authorization and a runbook exist.');
   if (command.mode === 'EXECUTE' && (!command.confirm || !command.executeEnabled)) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention execute requires confirmation and an explicit environment guard.');
+  if (command.mode === 'EXECUTE' && command.confirmationTarget !== buildRetentionConfirmationTarget(command)) throw new LearningFeedbackError('LEARNING_FEEDBACK_RETENTION_TARGET_MISMATCH', 'Retention confirmation does not match the verified target.');
 }

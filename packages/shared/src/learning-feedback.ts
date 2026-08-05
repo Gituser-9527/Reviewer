@@ -36,6 +36,13 @@ export const learningFeedbackEventTypes = [
 ] as const;
 export type LearningFeedbackEventType = (typeof learningFeedbackEventTypes)[number];
 
+/** Persisted correlation IDs are bounded and contain no free-form or secret-bearing text. */
+export const learningFeedbackRequestIdMaxLength = 128;
+export const learningFeedbackRequestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/u;
+
+export const learningFeedbackRetentionRunStatuses = ['SUCCEEDED', 'ANOMALY', 'FAILED'] as const;
+export type LearningFeedbackRetentionRunStatus = (typeof learningFeedbackRetentionRunStatuses)[number];
+
 export const learningFeedbackRetentionExpiryStatuses = [
   'RECEIVED',
   'NEEDS_REVIEW',
@@ -131,9 +138,13 @@ export function classifyLearningFeedbackRetention(
 }
 
 export interface LearningFeedbackRetentionSummary {
+  runId: string;
   tenantId: string;
   mode: 'DRY_RUN' | 'EXECUTE';
+  status: LearningFeedbackRetentionRunStatus;
+  failureCode?: 'GOLD_SET_ANOMALY';
   cutoff: string;
+  operationStartedAt: string;
   batchLimit: number;
   candidateCount: number;
   deletedCount: number;

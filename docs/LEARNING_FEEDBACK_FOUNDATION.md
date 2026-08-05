@@ -16,15 +16,15 @@ The API preview and submit paths use the same canonical `packages/core/src/secur
 
 Allowed statuses are `RECEIVED`, `NEEDS_REVIEW`, `PRIVACY_REJECTED`, `APPROVED`, `REJECTED`, `WITHDRAWN`, and reserved `PROMOTED_TO_GOLD_SET`. No status is automatically approved or promoted. The promotion endpoint explicitly returns `GOLD_SET_PROMOTION_UNAVAILABLE`.
 
-Withdrawal and review use conditional state transitions. Only `RECEIVED/NEEDS_REVIEW` may be withdrawn by the original reviewer or approved/rejected by a manager. Competing or repeated reviews return a conflict; state and the single terminal review event commit in one PostgreSQL transaction.
+Withdrawal and review lock the tenant-scoped submission row. Only `RECEIVED/NEEDS_REVIEW` may be withdrawn by the original reviewer or approved/rejected by a manager. The Repository derives the event from the database's real old state and constructs it internally; a PostgreSQL trigger validates the lifecycle chain. Competing or repeated reviews return a conflict.
 
-The append-only domain event stream contains only `SUBMITTED`, `WITHDRAWN`, `REVIEW_APPROVED`, and `REVIEW_REJECTED`. Actors are tenant-scoped HMAC pseudonyms with a key version; optional review notes are handled by the canonical security sanitizer. Events never store raw reviewer/administrator IDs or feedback content.
+During a submission's lifecycle, the application Repository only appends `SUBMITTED`, `WITHDRAWN`, `REVIEW_APPROVED`, or `REVIEW_REJECTED`; it does not update old events. This is not a WORM or legal immutability guarantee: database maintenance roles are outside the application contract, and authorized Retention deletes events with their parent. Actors are tenant-scoped HMAC pseudonyms; reason notes and bounded correlation IDs use canonical security handling.
 
-Retention cleanup is an independently authorized, audited maintenance command, not an automatic runtime side effect. Dry-run and execute share one typed policy: expired quarantined and terminal non-Gold statuses are eligible, withdrawn records are eligible at `withdrawnAt`, and any reserved Gold status makes execute fail closed. Execute requires an explicit tenant, confirmation, environment guard and bounded batch, and revalidates candidates atomically. No Scheduler exists.
+Retention uses only a dedicated database URL and a strict CLI. Execute requires tenant, bounded batch, environment guard and a confirmation target bound to database name, tenant, cutoff, batch and environment; production execute is unavailable. A governance version/database-time fence linearizes Review/Withdraw against cleanup. Any Gold state blocks the tenant execute, deletes zero rows and persists a minimal `ANOMALY` run/Audit Log; no automatic recovery exists. One command processes one batch. No Scheduler exists.
 
 ## Implemented foundation versus remaining work
 
-Implemented: authenticated API foundation, PostgreSQL persistence and composite business-chain constraints, trusted reviewer identity, canonical server redaction, atomic idempotency, human quarantine, CAS review, append-only lifecycle events, internal retention dry-run and explicitly guarded cleanup.
+Implemented: authenticated API foundation, PostgreSQL persistence and composite business-chain constraints, trusted reviewer identity, canonical server redaction, atomic idempotency, human quarantine, lock-linearized review/withdraw with internally constructed lifecycle events, and test/development internal retention dry-run/guarded cleanup.
 
 Not implemented: Web administration UI, Extension learning-feedback wiring, automatic retention Scheduler, complete LabelingService persistence, Gold Set, Shadow mode, training, automatic rule changes, or a human Pilot. This is not a complete learning platform.
 

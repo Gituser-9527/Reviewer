@@ -5,6 +5,7 @@ import {
   pseudonymizeSensitiveValue,
   redactSensitiveInfo,
   sanitizeAuditLog,
+  sanitizeCorrelationId,
   sanitizeLLMMessages,
   sanitizeSensitiveText,
 } from './sensitive-info.js';
@@ -13,6 +14,14 @@ const sensitiveText =
   '联系人手机13812345678，身份证110101199001011234，邮箱test@example.com，银行卡6222020202020202020，微信号 wx_test123，地址北京市朝阳区幸福路88号1单元，验证码 123456。';
 
 describe('security sensitive info module', () => {
+  it('bounds correlation IDs and hashes unsafe or sensitive values', () => {
+    expect(sanitizeCorrelationId('req-123:abc')).toBe('req-123:abc');
+    for (const value of ['x'.repeat(100_000), 'line\nbreak', 'Authorization: Bearer secret', 'postgresql://user:pass@db/prod', '请求一']) {
+      const sanitized = sanitizeCorrelationId(value);
+      expect(sanitized).toMatch(/^sha256:[a-f0-9]{64}$/u);
+      expect(sanitized).not.toContain(value);
+    }
+  });
   it('detects supported sensitive information categories', () => {
     const types = detectSensitiveInfo(sensitiveText).map((match) => match.type);
 

@@ -1624,8 +1624,8 @@ Review 请求体为：
 }
 ```
 
-`APPROVED` 只兼容 `QUALITY_VALIDATED`；`REJECTED` 兼容 `INSUFFICIENT_QUALITY`、`PRIVACY_CONCERN`、`OUT_OF_SCOPE` 或 `OTHER`。只有 `RECEIVED/NEEDS_REVIEW` 可转为 `APPROVED/REJECTED`。审批使用数据库条件更新，状态和不可变事件在同一事务提交；并发或重复审批的失败方返回 `409 LEARNING_FEEDBACK_STATE_CONFLICT`，不采用最后写入获胜。
+`APPROVED` 只兼容 `QUALITY_VALIDATED`；`REJECTED` 兼容 `INSUFFICIENT_QUALITY`、`PRIVACY_CONCERN`、`OUT_OF_SCOPE` 或 `OTHER`。只有 `RECEIVED/NEEDS_REVIEW` 可转为 `APPROVED/REJECTED`。Repository 在事务行锁内读取数据库真实旧状态、更新 payload/独立列并内部构造事件；调用方不能指定 event ID、feedback ID、tenant、event type 或 from/to status。并发或重复审批的失败方返回 `409 LEARNING_FEEDBACK_STATE_CONFLICT`，不采用最后写入获胜。事件 request ID 仅保留 128 字符以内的安全 correlation 格式；其他值保存为不可逆 SHA-256 token。
 
 ### 28.4 Retention 不是公共 API
 
-Retention 仅提供内部命令：`learning-feedback:retention:dry-run` 与 `learning-feedback:retention:execute`。两者都要求显式 tenant；execute 还要求 `--confirm`、`LEARNING_FEEDBACK_RETENTION_EXECUTE_ENABLED=true` 与有界 batch。不存在 HTTP、Extension 或自动 Scheduler 入口。
+Retention 仅提供内部命令：`learning-feedback:retention:dry-run` 与 `learning-feedback:retention:execute`，只读取专用 `LEARNING_FEEDBACK_RETENTION_DATABASE_URL`，不回退 `DATABASE_URL` 或 `TEST_DATABASE_URL`。strict parser 拒绝未知、重复、缺值或歧义参数。dry-run 输出由 tenant、数据库名、cutoff、batch 和环境共同计算的安全 `confirmationTarget`；execute 必须同时提供匹配的 `--confirm-target`、`--confirm`、显式 test/development 环境和 `LEARNING_FEEDBACK_RETENTION_EXECUTE_ENABLED=true`。production execute 固定不可用；生产授权和 runbook 尚未实现。一次 execute 只处理一个有界 batch，不存在 HTTP、Extension、全 tenant 或自动 Scheduler 入口。
