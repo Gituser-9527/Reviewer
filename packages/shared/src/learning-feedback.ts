@@ -142,7 +142,7 @@ export interface LearningFeedbackRetentionSummary {
   tenantId: string;
   mode: 'DRY_RUN' | 'EXECUTE';
   status: LearningFeedbackRetentionRunStatus;
-  failureCode?: 'GOLD_SET_ANOMALY';
+  failureCode?: 'GOLD_SET_ANOMALY' | 'RETENTION_EXECUTION_FAILED';
   cutoff: string;
   operationStartedAt: string;
   batchLimit: number;

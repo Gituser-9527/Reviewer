@@ -10,6 +10,7 @@ const base = (mode: 'DRY_RUN' | 'EXECUTE' = 'DRY_RUN'): RetentionCommand => ({
   actorUserId: 'operator-a',
   environment: 'test',
   databaseName: 'job_compliance_test',
+  databaseEndpoint: '127.0.0.1:5432',
   confirm: false,
   executeEnabled: false,
 });

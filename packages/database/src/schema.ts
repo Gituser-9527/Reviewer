@@ -2754,7 +2754,7 @@ export const learningFeedbackRetentionRuns = pgTable(
   (table) => [
     check('learning_feedback_retention_runs_mode_check', sql`${table.mode} IN ('DRY_RUN','EXECUTE')`),
     check('learning_feedback_retention_runs_run_status_check', sql`${table.runStatus} IN ('SUCCEEDED','ANOMALY','FAILED')`),
-    check('learning_feedback_retention_runs_failure_code_check', sql`(${table.runStatus} = 'SUCCEEDED' AND ${table.failureCode} IS NULL) OR (${table.runStatus} = 'ANOMALY' AND ${table.failureCode} = 'GOLD_SET_ANOMALY' AND ${table.deletedCount} = 0) OR (${table.runStatus} = 'FAILED' AND ${table.failureCode} IS NOT NULL AND ${table.deletedCount} = 0)`),
+    check('learning_feedback_retention_runs_failure_code_check', sql`(${table.runStatus} = 'SUCCEEDED' AND ${table.failureCode} IS NULL) OR (${table.runStatus} = 'ANOMALY' AND ${table.failureCode} = 'GOLD_SET_ANOMALY' AND ${table.deletedCount} = 0) OR (${table.runStatus} = 'FAILED' AND ${table.failureCode} = 'RETENTION_EXECUTION_FAILED' AND ${table.deletedCount} = 0)`),
     check('learning_feedback_retention_runs_batch_limit_check', sql`${table.batchLimit} > 0`),
     check('learning_feedback_retention_runs_candidate_count_check', sql`${table.candidateCount} >= 0`),
     check('learning_feedback_retention_runs_deleted_count_check', sql`${table.deletedCount} >= 0`),

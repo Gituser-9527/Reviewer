@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS learning_feedback_retention_runs (
   tenant_id TEXT NOT NULL,
   mode TEXT NOT NULL CHECK (mode IN ('DRY_RUN', 'EXECUTE')),
   run_status TEXT NOT NULL CHECK (run_status IN ('SUCCEEDED', 'ANOMALY', 'FAILED')),
-  failure_code TEXT CHECK (failure_code IS NULL OR failure_code = 'GOLD_SET_ANOMALY'),
+  failure_code TEXT CHECK (failure_code IS NULL OR failure_code IN ('GOLD_SET_ANOMALY', 'RETENTION_EXECUTION_FAILED')),
   cutoff TIMESTAMPTZ NOT NULL,
   operation_started_at TIMESTAMPTZ NOT NULL,
   batch_limit INTEGER NOT NULL CHECK (batch_limit > 0),
@@ -181,7 +181,7 @@ ALTER TABLE learning_feedback_retention_runs DROP CONSTRAINT IF EXISTS learning_
 ALTER TABLE learning_feedback_retention_runs ADD CONSTRAINT learning_feedback_retention_runs_failure_code_check CHECK (
   (run_status = 'SUCCEEDED' AND failure_code IS NULL)
   OR (run_status = 'ANOMALY' AND failure_code = 'GOLD_SET_ANOMALY' AND deleted_count = 0)
-  OR (run_status = 'FAILED' AND failure_code IS NOT NULL AND deleted_count = 0)
+  OR (run_status = 'FAILED' AND failure_code = 'RETENTION_EXECUTION_FAILED' AND deleted_count = 0)
 );
 
 CREATE INDEX IF NOT EXISTS learning_feedback_retention_runs_tenant_time_idx

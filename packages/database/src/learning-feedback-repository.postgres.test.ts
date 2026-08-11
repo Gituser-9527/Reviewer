@@ -73,8 +73,11 @@ describe('PostgresLearningFeedbackRepository integration', () => {
       falseNegative: false,
     });
     if (completed === undefined) throw new Error('Expected completed human review ticket.');
-    const reviewerDecisionId = completed.feedback?.id;
-    if (reviewerDecisionId === undefined) throw new Error('Expected human review feedback.');
+    // The public ticket payload is privacy-redacted and must not be reused as a
+    // UUID fixture. Read the persisted decision key from the authoritative table.
+    const persistedDecision = await pool.query<{ id: string }>('SELECT id FROM human_review_feedback WHERE review_ticket_id=$1 AND tenant_id=$2', [ticket.id, tenantId]);
+    const reviewerDecisionId = persistedDecision.rows[0]?.id;
+    if (reviewerDecisionId === undefined) throw new Error('Expected persisted human review feedback.');
     return { tenantId, auditId, ticket: completed, reviewerDecisionId, reviewerId };
   }
 
@@ -270,7 +273,7 @@ describe('PostgresLearningFeedbackRepository integration', () => {
   it('installs the event truth trigger and named parity constraints', async () => {
     const trigger = await pool.query<{ name: string }>("SELECT tgname AS name FROM pg_trigger WHERE tgrelid='learning_feedback_events'::regclass AND NOT tgisinternal");
     expect(trigger.rows.map((row) => row.name)).toContain('learning_feedback_event_truth_trigger');
-    const constraints = await pool.query<{ name: string }>("SELECT conname AS name FROM pg_constraint WHERE conrelid IN ('learning_feedback_submissions'::regclass,'learning_feedback_events'::regclass,'learning_feedback_retention_runs'::regclass)");
+    const constraints = await pool.query<{ name: string; definition: string }>("SELECT conname AS name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid IN ('learning_feedback_submissions'::regclass,'learning_feedback_events'::regclass,'learning_feedback_retention_runs'::regclass)");
     expect(constraints.rows.map((row) => row.name)).toEqual(expect.arrayContaining([
       'learning_feedback_submissions_source_check', 'learning_feedback_submissions_status_check',
       'learning_feedback_events_event_semantics_check', 'learning_feedback_events_request_id_check',
@@ -281,5 +284,9 @@ describe('PostgresLearningFeedbackRepository integration', () => {
     for (const name of constraints.rows.map((row) => row.name).filter((name) => name.startsWith('learning_feedback_') && name.endsWith('_check'))) {
       expect(drizzleChecks).toContain(name);
     }
+    const failure = constraints.rows.find((row) => row.name === 'learning_feedback_retention_runs_failure_code_check');
+    expect(failure?.definition).toContain('RETENTION_EXECUTION_FAILED');
+    const foreignKeys = await pool.query<{ definition: string }>("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE contype='f' AND conrelid='learning_feedback_events'::regclass");
+    expect(foreignKeys.rows.some((row) => row.definition.includes('learning_feedback_submissions'))).toBe(true);
   });
 });

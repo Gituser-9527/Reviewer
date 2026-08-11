@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import type { Pool as PgPool, PoolClient } from 'pg';
@@ -34,6 +34,18 @@ export interface RetentionOperationInput {
   occurredAt: Date;
 }
 
+/** Non-secret identity returned only from the dedicated maintenance connection. */
+export interface RetentionDatabaseIdentity {
+  databaseName: string;
+  endpoint: string;
+}
+
+export interface LearningFeedbackRetentionMaintenanceAdapter {
+  getDatabaseIdentity(): Promise<RetentionDatabaseIdentity>;
+  executeRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary>;
+  close(): Promise<void>;
+}
+
 type RetentionExecutionInput = RetentionOperationInput & { operationStartedAt: Date };
 
 export interface LearningFeedbackCreateContext {
@@ -58,7 +70,6 @@ export interface LearningFeedbackRepository {
   listEvents(learningFeedbackId: string, tenantId: string): Promise<LearningFeedbackEvent[]>;
   transitionQuarantined(command: LearningFeedbackTransitionCommand): Promise<LearningFeedbackSubmission | undefined>;
   previewRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary>;
-  executeRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary>;
   close(): Promise<void>;
 }
 
@@ -124,7 +135,7 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
   }
 
   async listEvents(learningFeedbackId: string, tenantId: string): Promise<LearningFeedbackEvent[]> {
-    const rows = await this.db.select().from(learningFeedbackEvents).where(and(eq(learningFeedbackEvents.learningFeedbackId, learningFeedbackId), eq(learningFeedbackEvents.tenantId, tenantId))).orderBy(learningFeedbackEvents.occurredAt);
+    const rows = await this.db.select().from(learningFeedbackEvents).where(and(eq(learningFeedbackEvents.learningFeedbackId, learningFeedbackId), eq(learningFeedbackEvents.tenantId, tenantId))).orderBy(asc(learningFeedbackEvents.occurredAt), asc(learningFeedbackEvents.id));
     return rows.map((row) => ({
       id: row.id,
       tenantId: row.tenantId,
@@ -145,9 +156,13 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     return this.transitionWithEvent(command);
   }
 
-  async getCurrentDatabaseName(): Promise<string> {
-    const result = await this.pool.query<{ database_name: string }>('SELECT current_database() AS database_name');
-    return result.rows[0]?.database_name ?? '';
+  async getMaintenanceIdentity(expectedRole: string): Promise<RetentionDatabaseIdentity> {
+    const result = await this.pool.query<{ database_name: string; endpoint: string; current_user: string }>(
+      "SELECT current_database() AS database_name, concat(coalesce(inet_server_addr()::text, 'local'), ':', coalesce(inet_server_port()::text, '0')) AS endpoint, current_user",
+    );
+    const row = result.rows[0];
+    if (row === undefined || !expectedRole || row.current_user !== expectedRole) throw new Error('LEARNING_FEEDBACK_RETENTION_MAINTENANCE_ROLE_REQUIRED');
+    return { databaseName: row.database_name, endpoint: row.endpoint };
   }
 
   async previewRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
@@ -167,7 +182,8 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     }
   }
 
-  async executeRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
+  /** @internal Only the maintenance adapter invokes this after connection-role verification. */
+  async executeRetentionForMaintenance(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -185,6 +201,19 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
       return summary;
     } catch (error) {
       await client.query('ROLLBACK');
+      const failure: LearningFeedbackRetentionSummary = {
+        runId: input.runId, tenantId: input.tenantId, mode: 'EXECUTE', status: 'FAILED', failureCode: 'RETENTION_EXECUTION_FAILED',
+        cutoff: input.cutoff.toISOString(), operationStartedAt: input.occurredAt.toISOString(), batchLimit: input.batchLimit,
+        candidateCount: 0, deletedCount: 0, countsByStatus: {}, candidateIds: [], anomalyCount: 0, occurredAt: input.occurredAt.toISOString(),
+      };
+      try {
+        await client.query('BEGIN');
+        await this.insertRetentionRunAndAudit(client, { ...input, operationStartedAt: input.occurredAt }, failure);
+        await client.query('COMMIT');
+      } catch {
+        await client.query('ROLLBACK');
+        throw new Error('LEARNING_FEEDBACK_RETENTION_FAILURE_AUDIT_UNAVAILABLE');
+      }
       throw error;
     } finally {
       client.release();
@@ -374,4 +403,25 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     )).limit(1);
     return row?.payload;
   }
+}
+
+/**
+ * Destructive Retention is deliberately kept out of the ordinary repository
+ * contract. Callers must provide a dedicated maintenance connection and the
+ * expected database role before this adapter exposes DELETE capability.
+ */
+export class PostgresLearningFeedbackRetentionMaintenanceAdapter implements LearningFeedbackRetentionMaintenanceAdapter {
+  constructor(private readonly repository: PostgresLearningFeedbackRepository, private readonly expectedRole: string) {}
+
+  async getDatabaseIdentity(): Promise<RetentionDatabaseIdentity> {
+    const result = await this.repository.getMaintenanceIdentity(this.expectedRole);
+    return result;
+  }
+
+  async executeRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
+    await this.getDatabaseIdentity();
+    return this.repository.executeRetentionForMaintenance(input);
+  }
+
+  async close(): Promise<void> { await this.repository.close(); }
 }

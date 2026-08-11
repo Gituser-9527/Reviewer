@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { PostgresLearningFeedbackRepository } from '@job-compliance/database';
+import { PostgresLearningFeedbackRepository, PostgresLearningFeedbackRetentionMaintenanceAdapter } from '@job-compliance/database';
 import { LearningFeedbackError } from './service.js';
 import { buildRetentionConfirmationTarget, LearningFeedbackRetentionService, type RetentionCommand } from './retention.js';
 
@@ -41,6 +41,7 @@ export function parseRetentionArgs(args: string[], env: NodeJS.ProcessEnv = proc
     actorUserId: env.LEARNING_FEEDBACK_RETENTION_ACTOR_ID ?? '',
     environment: environmentValue as RetentionCommand['environment'],
     databaseName: '',
+    databaseEndpoint: '',
     confirm: switches.has('--confirm'),
     ...(confirmationTarget === undefined ? {} : { confirmationTarget }),
     executeEnabled: env.LEARNING_FEEDBACK_RETENTION_EXECUTE_ENABLED === 'true',
@@ -54,8 +55,11 @@ export async function runRetentionCli(args: string[], env: NodeJS.ProcessEnv = p
     const connectionString = env.LEARNING_FEEDBACK_RETENTION_DATABASE_URL;
     if (!connectionString) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention requires a configured database.');
     repository = new PostgresLearningFeedbackRepository({ connectionString });
-    command.databaseName = await repository.getCurrentDatabaseName();
-    const service = new LearningFeedbackRetentionService(repository, env.LEARNING_FEEDBACK_PSEUDONYM_KEY ?? '', env.LEARNING_FEEDBACK_PSEUDONYM_KEY_VERSION ?? 'v1');
+    const maintenance = new PostgresLearningFeedbackRetentionMaintenanceAdapter(repository, env.LEARNING_FEEDBACK_RETENTION_DATABASE_ROLE ?? '');
+    const identity = await maintenance.getDatabaseIdentity();
+    command.databaseName = identity.databaseName;
+    command.databaseEndpoint = identity.endpoint;
+    const service = new LearningFeedbackRetentionService(repository, env.LEARNING_FEEDBACK_PSEUDONYM_KEY ?? '', env.LEARNING_FEEDBACK_PSEUDONYM_KEY_VERSION ?? 'v1', maintenance);
     const summary = await service.run(command);
     process.stdout.write(`${JSON.stringify(command.mode === 'DRY_RUN' ? { ...summary, confirmationTarget: buildRetentionConfirmationTarget(command) } : summary)}\n`);
     return summary.status === 'ANOMALY' ? 2 : 0;

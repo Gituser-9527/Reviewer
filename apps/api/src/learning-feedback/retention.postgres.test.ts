@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PostgresAuditRunRepository, PostgresLearningFeedbackRepository } from '@job-compliance/database';
+import { PostgresAuditRunRepository, PostgresLearningFeedbackRepository, PostgresLearningFeedbackRetentionMaintenanceAdapter } from '@job-compliance/database';
 import { learningFeedbackConsentNoticeVersion, learningFeedbackPurpose, learningFeedbackSource, type AuditResult, type JobPostingInput, type LearningFeedbackStatus, type LearningFeedbackSubmission } from '@job-compliance/shared';
 import { buildApp } from '../app.js';
 import { LLMSettingsService } from '../settings/service.js';
@@ -17,6 +17,7 @@ describe('learning feedback retention PostgreSQL governance', () => {
   const pool = new Pool({ connectionString: testDatabaseUrl });
   const auditRepository = new PostgresAuditRunRepository({ pool });
   const repository = new PostgresLearningFeedbackRepository({ pool });
+  const maintenance = new PostgresLearningFeedbackRetentionMaintenanceAdapter(repository, 'test_user');
   const suffix = randomUUID();
   const tenantId = `tenant-retention-${suffix}`;
   const otherTenantId = `tenant-retention-other-${suffix}`;
@@ -82,12 +83,12 @@ describe('learning feedback retention PostgreSQL governance', () => {
   });
 
   const command = (mode: 'DRY_RUN' | 'EXECUTE', batchLimit = 100, targetTenant = tenantId): RetentionCommand => {
-    const base: RetentionCommand = { mode, tenantId: targetTenant, cutoff, batchLimit, actorUserId: 'maintenance-operator-174', environment: 'test', databaseName: 'job_compliance_test', confirm: mode === 'EXECUTE', executeEnabled: mode === 'EXECUTE' };
+    const base: RetentionCommand = { mode, tenantId: targetTenant, cutoff, batchLimit, actorUserId: 'maintenance-operator-174', environment: 'test', databaseName: 'job_compliance_test', databaseEndpoint: '127.0.0.1:5433', confirm: mode === 'EXECUTE', executeEnabled: mode === 'EXECUTE' };
     return mode === 'EXECUTE' ? { ...base, confirmationTarget: buildRetentionConfirmationTarget(base) } : base;
   };
 
   it('dry-runs the complete status policy without changing submissions or events', async () => {
-    const service = new LearningFeedbackRetentionService(repository, 'retention-key', 'retention-v1');
+    const service = new LearningFeedbackRetentionService(repository, 'retention-key', 'retention-v1', maintenance);
     const before = await pool.query<{ submissions: string; events: string }>('SELECT (SELECT count(*) FROM learning_feedback_submissions WHERE tenant_id=$1)::text AS submissions, (SELECT count(*) FROM learning_feedback_events WHERE tenant_id=$1)::text AS events', [tenantId]);
     const summary = await service.run(command('DRY_RUN'));
     expect(summary).toMatchObject({ candidateCount: 7, deletedCount: 0, anomalyCount: 1 });
@@ -97,7 +98,7 @@ describe('learning feedback retention PostgreSQL governance', () => {
   });
 
   it('fails closed on Gold Set anomaly without deleting candidates', async () => {
-    const service = new LearningFeedbackRetentionService(repository, 'retention-key');
+    const service = new LearningFeedbackRetentionService(repository, 'retention-key', 'v1', maintenance);
     const anomaly = await service.run(command('EXECUTE'));
     expect(anomaly).toMatchObject({ status: 'ANOMALY', failureCode: 'GOLD_SET_ANOMALY', deletedCount: 0 });
     const count = await pool.query<{ count: string }>('SELECT count(*)::text AS count FROM learning_feedback_submissions WHERE tenant_id=$1', [tenantId]);
@@ -115,7 +116,7 @@ describe('learning feedback retention PostgreSQL governance', () => {
   });
 
   it('linearizes transition and Retention so the same record cannot be both transitioned and deleted', async () => {
-    const service = new LearningFeedbackRetentionService(repository, 'retention-key');
+    const service = new LearningFeedbackRetentionService(repository, 'retention-key', 'v1', maintenance);
     const transitionFirst = record(raceTenantId, raceChain, 'transition-first', 'RECEIVED', '2026-01-01T00:00:00.000Z');
     await insert(transitionFirst);
     await pool.query(`CREATE OR REPLACE FUNCTION delay_transition_176() RETURNS trigger AS $$ BEGIN PERFORM pg_sleep(0.3); RETURN NEW; END; $$ LANGUAGE plpgsql`);
@@ -148,9 +149,10 @@ describe('learning feedback retention PostgreSQL governance', () => {
 
   it('uses only the dedicated Retention URL and rejects production or mismatched targets', async () => {
     const cutoffValue = '2026-02-01T00:00:00.000Z';
-    const targetBase = { tenantId: cliTenantId, cutoff: new Date(cutoffValue), batchLimit: 3, environment: 'test' as const, databaseName: 'job_compliance_test' };
+    const identity = await maintenance.getDatabaseIdentity();
+    const targetBase = { tenantId: cliTenantId, cutoff: new Date(cutoffValue), batchLimit: 3, environment: 'test' as const, databaseName: identity.databaseName, databaseEndpoint: identity.endpoint };
     const target = buildRetentionConfirmationTarget(targetBase);
-    const common = { LEARNING_FEEDBACK_RETENTION_ACTOR_ID: 'cli-operator', LEARNING_FEEDBACK_RETENTION_PSEUDONYM_KEY: undefined, LEARNING_FEEDBACK_PSEUDONYM_KEY: 'cli-key', LEARNING_FEEDBACK_RETENTION_ENVIRONMENT: 'test', LEARNING_FEEDBACK_RETENTION_EXECUTE_ENABLED: 'true' };
+    const common = { LEARNING_FEEDBACK_RETENTION_ACTOR_ID: 'cli-operator', LEARNING_FEEDBACK_RETENTION_DATABASE_ROLE: 'test_user', LEARNING_FEEDBACK_RETENTION_PSEUDONYM_KEY: undefined, LEARNING_FEEDBACK_PSEUDONYM_KEY: 'cli-key', LEARNING_FEEDBACK_RETENTION_ENVIRONMENT: 'test', LEARNING_FEEDBACK_RETENTION_EXECUTE_ENABLED: 'true' };
     await expect(runRetentionCli(['dry-run', '--tenant-id', cliTenantId], { ...common, DATABASE_URL: testDatabaseUrl })).resolves.toBe(1);
     await expect(runRetentionCli(['dry-run', '--tenant-id', cliTenantId], { ...common, TEST_DATABASE_URL: testDatabaseUrl })).resolves.toBe(1);
     await expect(runRetentionCli(['dry-run', '--tenant-id', cliTenantId, '--limit', '3', '--cutoff', cutoffValue], { ...common, LEARNING_FEEDBACK_RETENTION_DATABASE_URL: testDatabaseUrl, DATABASE_URL: 'postgresql://invalid.invalid/should-not-be-used' })).resolves.toBe(0);
@@ -164,18 +166,19 @@ describe('learning feedback retention PostgreSQL governance', () => {
     await insert(candidate);
     const failingRepository = new PostgresLearningFeedbackRepository({ pool, auditLogWriter: { recordRetentionWithClient: async () => { throw new Error('AUDIT_WRITER_FAILED'); } } });
     const input = (runId: string) => ({ runId, tenantId: raceTenantId, cutoff, batchLimit: 10, actorPseudonym: 'e'.repeat(64), pseudonymKeyVersion: 'v1', auditActorId: 'maintenance', occurredAt: new Date() });
-    await expect(failingRepository.executeRetention(input('run-delete-failure-176'))).rejects.toThrow('AUDIT_WRITER_FAILED');
+    const failingMaintenance = new PostgresLearningFeedbackRetentionMaintenanceAdapter(failingRepository, 'test_user');
+    await expect(failingMaintenance.executeRetention(input('run-delete-failure-176'))).rejects.toThrow('LEARNING_FEEDBACK_RETENTION_FAILURE_AUDIT_UNAVAILABLE');
     await expect(repository.findById(candidate.id, raceTenantId)).resolves.toMatchObject({ id: candidate.id });
     const gold = record(raceTenantId, raceChain, 'audit-writer-gold', 'PROMOTED_TO_GOLD_SET', '2026-01-01T00:00:00.000Z');
     await insert(gold);
-    await expect(failingRepository.executeRetention(input('run-anomaly-failure-176'))).rejects.toThrow('AUDIT_WRITER_FAILED');
+    await expect(failingMaintenance.executeRetention(input('run-anomaly-failure-176'))).rejects.toThrow('LEARNING_FEEDBACK_RETENTION_FAILURE_AUDIT_UNAVAILABLE');
     const run = await pool.query('SELECT id FROM learning_feedback_retention_runs WHERE id=$1', ['run-anomaly-failure-176']);
     expect(run.rowCount).toBe(0);
     await expect(repository.findById(gold.id, raceTenantId)).resolves.toMatchObject({ status: 'PROMOTED_TO_GOLD_SET' });
   });
 
   it('uses bounded concurrent atomic deletes, cascades events and preserves other tenants', async () => {
-    const service = new LearningFeedbackRetentionService(repository, 'retention-key');
+    const service = new LearningFeedbackRetentionService(repository, 'retention-key', 'v1', maintenance);
     const [first, second] = await Promise.all([service.run(command('EXECUTE', 3)), service.run(command('EXECUTE', 3))]);
     expect(first.deletedCount + second.deletedCount).toBe(6);
     expect(new Set([...first.candidateIds, ...second.candidateIds]).size).toBe(6);
