@@ -40,7 +40,7 @@ export type LearningFeedbackEventType = (typeof learningFeedbackEventTypes)[numb
 export const learningFeedbackRequestIdMaxLength = 128;
 export const learningFeedbackRequestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/u;
 
-export const learningFeedbackRetentionRunStatuses = ['SUCCEEDED', 'ANOMALY', 'FAILED'] as const;
+export const learningFeedbackRetentionRunStatuses = ['SUCCEEDED'] as const;
 export type LearningFeedbackRetentionRunStatus = (typeof learningFeedbackRetentionRunStatuses)[number];
 
 export const learningFeedbackRetentionExpiryStatuses = [
@@ -140,9 +140,8 @@ export function classifyLearningFeedbackRetention(
 export interface LearningFeedbackRetentionSummary {
   runId: string;
   tenantId: string;
-  mode: 'DRY_RUN' | 'EXECUTE';
+  mode: 'DRY_RUN';
   status: LearningFeedbackRetentionRunStatus;
-  failureCode?: 'GOLD_SET_ANOMALY' | 'RETENTION_EXECUTION_FAILED';
   cutoff: string;
   operationStartedAt: string;
   batchLimit: number;

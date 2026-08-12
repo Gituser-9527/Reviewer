@@ -244,6 +244,17 @@ describe('PostgresLearningFeedbackRepository integration', () => {
     expect(events[1]?.requestId).toMatch(/^sha256:[a-f0-9]{64}$/u);
   });
 
+  it('orders lifecycle events deterministically by occurred_at then id', async () => {
+    const candidate = record(a1);
+    await feedbackRepository.createIdempotent(candidate, createContext());
+    const timestamp = new Date(candidate.createdAt);
+    await pool.query("UPDATE learning_feedback_submissions SET status='WITHDRAWN', updated_at=$2, withdrawn_at=$2, payload=jsonb_set(payload, '{status}', '\"WITHDRAWN\"'::jsonb) WHERE id=$1 AND tenant_id=$3", [candidate.id, timestamp, candidate.tenantId]);
+    const eventId = `zz-event-order-${randomUUID()}`;
+    await pool.query(`INSERT INTO learning_feedback_events (id,tenant_id,learning_feedback_id,event_type,from_status,to_status,actor_pseudonym,pseudonym_key_version,metadata,occurred_at) VALUES ($1,$2,$3,'WITHDRAWN','RECEIVED','WITHDRAWN',$4,'test-v1','{}'::jsonb,$5)`, [eventId, candidate.tenantId, candidate.id, 'c'.repeat(64), timestamp]);
+    const events = await feedbackRepository.listEvents(candidate.id, candidate.tenantId);
+    expect(events.map((event) => event.id)).toEqual([...events].map((event) => event.id).sort());
+  });
+
   it('rejects raw SQL events that do not match the persisted lifecycle', async () => {
     const left = record(a1); const right = record(a2);
     await feedbackRepository.createIdempotent(left, createContext());
@@ -271,8 +282,9 @@ describe('PostgresLearningFeedbackRepository integration', () => {
   });
 
   it('installs the event truth trigger and named parity constraints', async () => {
-    const trigger = await pool.query<{ name: string }>("SELECT tgname AS name FROM pg_trigger WHERE tgrelid='learning_feedback_events'::regclass AND NOT tgisinternal");
+    const trigger = await pool.query<{ name: string; definition: string }>("SELECT tgname AS name, pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgrelid='learning_feedback_events'::regclass AND NOT tgisinternal");
     expect(trigger.rows.map((row) => row.name)).toContain('learning_feedback_event_truth_trigger');
+    expect(trigger.rows.find((row) => row.name === 'learning_feedback_event_truth_trigger')?.definition).toContain('enforce_learning_feedback_event_truth');
     const constraints = await pool.query<{ name: string; definition: string }>("SELECT conname AS name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid IN ('learning_feedback_submissions'::regclass,'learning_feedback_events'::regclass,'learning_feedback_retention_runs'::regclass)");
     expect(constraints.rows.map((row) => row.name)).toEqual(expect.arrayContaining([
       'learning_feedback_submissions_source_check', 'learning_feedback_submissions_status_check',
@@ -285,8 +297,10 @@ describe('PostgresLearningFeedbackRepository integration', () => {
       expect(drizzleChecks).toContain(name);
     }
     const failure = constraints.rows.find((row) => row.name === 'learning_feedback_retention_runs_failure_code_check');
-    expect(failure?.definition).toContain('RETENTION_EXECUTION_FAILED');
+    expect(failure?.definition).toContain("run_status = 'SUCCEEDED'");
     const foreignKeys = await pool.query<{ definition: string }>("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE contype='f' AND conrelid='learning_feedback_events'::regclass");
     expect(foreignKeys.rows.some((row) => row.definition.includes('learning_feedback_submissions'))).toBe(true);
+    const indexes = await pool.query<{ definition: string }>("SELECT indexdef AS definition FROM pg_indexes WHERE tablename='learning_feedback_events'");
+    expect(indexes.rows.some((row) => row.definition.includes('learning_feedback_events_tenant_feedback_idx'))).toBe(true);
   });
 });

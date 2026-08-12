@@ -153,9 +153,9 @@ CREATE INDEX IF NOT EXISTS learning_feedback_events_tenant_feedback_idx
 CREATE TABLE IF NOT EXISTS learning_feedback_retention_runs (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
-  mode TEXT NOT NULL CHECK (mode IN ('DRY_RUN', 'EXECUTE')),
-  run_status TEXT NOT NULL CHECK (run_status IN ('SUCCEEDED', 'ANOMALY', 'FAILED')),
-  failure_code TEXT CHECK (failure_code IS NULL OR failure_code IN ('GOLD_SET_ANOMALY', 'RETENTION_EXECUTION_FAILED')),
+  mode TEXT NOT NULL CHECK (mode = 'DRY_RUN'),
+  run_status TEXT NOT NULL CHECK (run_status = 'SUCCEEDED'),
+  failure_code TEXT,
   cutoff TIMESTAMPTZ NOT NULL,
   operation_started_at TIMESTAMPTZ NOT NULL,
   batch_limit INTEGER NOT NULL CHECK (batch_limit > 0),
@@ -176,12 +176,10 @@ UPDATE learning_feedback_retention_runs SET operation_started_at = occurred_at W
 ALTER TABLE learning_feedback_retention_runs ALTER COLUMN run_status SET NOT NULL;
 ALTER TABLE learning_feedback_retention_runs ALTER COLUMN operation_started_at SET NOT NULL;
 ALTER TABLE learning_feedback_retention_runs DROP CONSTRAINT IF EXISTS learning_feedback_retention_runs_run_status_check;
-ALTER TABLE learning_feedback_retention_runs ADD CONSTRAINT learning_feedback_retention_runs_run_status_check CHECK (run_status IN ('SUCCEEDED', 'ANOMALY', 'FAILED'));
+ALTER TABLE learning_feedback_retention_runs ADD CONSTRAINT learning_feedback_retention_runs_run_status_check CHECK (run_status = 'SUCCEEDED');
 ALTER TABLE learning_feedback_retention_runs DROP CONSTRAINT IF EXISTS learning_feedback_retention_runs_failure_code_check;
 ALTER TABLE learning_feedback_retention_runs ADD CONSTRAINT learning_feedback_retention_runs_failure_code_check CHECK (
-  (run_status = 'SUCCEEDED' AND failure_code IS NULL)
-  OR (run_status = 'ANOMALY' AND failure_code = 'GOLD_SET_ANOMALY' AND deleted_count = 0)
-  OR (run_status = 'FAILED' AND failure_code = 'RETENTION_EXECUTION_FAILED' AND deleted_count = 0)
+  run_status = 'SUCCEEDED' AND failure_code IS NULL AND deleted_count = 0
 );
 
 CREATE INDEX IF NOT EXISTS learning_feedback_retention_runs_tenant_time_idx

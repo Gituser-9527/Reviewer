@@ -5,11 +5,11 @@ import type { PoolClient } from 'pg';
 
 export type RetentionAuditSummary = Pick<
   LearningFeedbackRetentionSummary,
-  'runId' | 'mode' | 'status' | 'failureCode' | 'cutoff' | 'operationStartedAt' | 'batchLimit' | 'candidateCount' | 'deletedCount' | 'countsByStatus' | 'anomalyCount'
+  'runId' | 'mode' | 'status' | 'cutoff' | 'operationStartedAt' | 'batchLimit' | 'candidateCount' | 'deletedCount' | 'countsByStatus' | 'anomalyCount'
 >;
 
 const allowedSummaryKeys = new Set([
-  'runId', 'mode', 'status', 'failureCode', 'cutoff', 'operationStartedAt', 'batchLimit',
+  'runId', 'mode', 'status', 'cutoff', 'operationStartedAt', 'batchLimit',
   'candidateCount', 'deletedCount', 'countsByStatus', 'anomalyCount',
 ]);
 
@@ -41,7 +41,7 @@ export class PostgresAuditLogWriter implements TransactionalAuditLogWriter {
       `audit_op_${randomUUID()}`,
       input.actorUserId,
       input.tenantId,
-      input.summary.mode === 'DRY_RUN' ? 'learning_feedback_retention_dry_run' : 'learning_feedback_retention_execute',
+      'learning_feedback_retention_dry_run',
       input.summary.runId,
       safeSummary,
       input.occurredAt,

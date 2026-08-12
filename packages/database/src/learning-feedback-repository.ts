@@ -35,16 +35,6 @@ export interface RetentionOperationInput {
 }
 
 /** Non-secret identity returned only from the dedicated maintenance connection. */
-export interface RetentionDatabaseIdentity {
-  databaseName: string;
-  endpoint: string;
-}
-
-export interface LearningFeedbackRetentionMaintenanceAdapter {
-  getDatabaseIdentity(): Promise<RetentionDatabaseIdentity>;
-  executeRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary>;
-  close(): Promise<void>;
-}
 
 type RetentionExecutionInput = RetentionOperationInput & { operationStartedAt: Date };
 
@@ -156,64 +146,17 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     return this.transitionWithEvent(command);
   }
 
-  async getMaintenanceIdentity(expectedRole: string): Promise<RetentionDatabaseIdentity> {
-    const result = await this.pool.query<{ database_name: string; endpoint: string; current_user: string }>(
-      "SELECT current_database() AS database_name, concat(coalesce(inet_server_addr()::text, 'local'), ':', coalesce(inet_server_port()::text, '0')) AS endpoint, current_user",
-    );
-    const row = result.rows[0];
-    if (row === undefined || !expectedRole || row.current_user !== expectedRole) throw new Error('LEARNING_FEEDBACK_RETENTION_MAINTENANCE_ROLE_REQUIRED');
-    return { databaseName: row.database_name, endpoint: row.endpoint };
-  }
-
   async previewRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const effectiveInput = await this.withDatabaseStart(client, input);
-      const summary = await this.retentionSummary(client, effectiveInput, 'DRY_RUN', false);
+      const summary = await this.retentionSummary(client, effectiveInput);
       await this.insertRetentionRunAndAudit(client, effectiveInput, summary);
       await client.query('COMMIT');
       return summary;
     } catch (error) {
       await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  /** @internal Only the maintenance adapter invokes this after connection-role verification. */
-  async executeRetentionForMaintenance(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const effectiveInput = await this.withDatabaseStart(client, input);
-      const summary = await this.retentionSummary(client, effectiveInput, 'EXECUTE', true);
-      if (summary.status === 'ANOMALY') {
-        await client.query('ROLLBACK');
-        await client.query('BEGIN');
-        await this.insertRetentionRunAndAudit(client, effectiveInput, summary);
-        await client.query('COMMIT');
-        return summary;
-      }
-      await this.insertRetentionRunAndAudit(client, effectiveInput, summary);
-      await client.query('COMMIT');
-      return summary;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      const failure: LearningFeedbackRetentionSummary = {
-        runId: input.runId, tenantId: input.tenantId, mode: 'EXECUTE', status: 'FAILED', failureCode: 'RETENTION_EXECUTION_FAILED',
-        cutoff: input.cutoff.toISOString(), operationStartedAt: input.occurredAt.toISOString(), batchLimit: input.batchLimit,
-        candidateCount: 0, deletedCount: 0, countsByStatus: {}, candidateIds: [], anomalyCount: 0, occurredAt: input.occurredAt.toISOString(),
-      };
-      try {
-        await client.query('BEGIN');
-        await this.insertRetentionRunAndAudit(client, { ...input, operationStartedAt: input.occurredAt }, failure);
-        await client.query('COMMIT');
-      } catch {
-        await client.query('ROLLBACK');
-        throw new Error('LEARNING_FEEDBACK_RETENTION_FAILURE_AUDIT_UNAVAILABLE');
-      }
       throw error;
     } finally {
       client.release();
@@ -279,40 +222,11 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     return { ...input, operationStartedAt: result.rows[0]?.operation_started_at ?? new Date() };
   }
 
-  private async retentionSummary(client: PoolClient, input: RetentionExecutionInput, mode: LearningFeedbackRetentionSummary['mode'], execute: boolean): Promise<LearningFeedbackRetentionSummary> {
+  private async retentionSummary(client: PoolClient, input: RetentionExecutionInput): Promise<LearningFeedbackRetentionSummary> {
     const anomaly = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM learning_feedback_submissions WHERE tenant_id = $1 AND status = 'PROMOTED_TO_GOLD_SET'", [input.tenantId]);
     const anomalyCount = Number(anomaly.rows[0]?.count ?? '0');
-    if (execute && anomalyCount > 0) return {
-      runId: input.runId, tenantId: input.tenantId, mode, status: 'ANOMALY', failureCode: 'GOLD_SET_ANOMALY',
-      cutoff: input.cutoff.toISOString(), operationStartedAt: input.operationStartedAt.toISOString(), batchLimit: input.batchLimit,
-      candidateCount: 0, deletedCount: 0, countsByStatus: {}, candidateIds: [], anomalyCount,
-      occurredAt: input.occurredAt.toISOString(),
-    };
     const params = [input.tenantId, [...learningFeedbackRetentionExpiryStatuses], input.cutoff, input.batchLimit, input.operationStartedAt];
-    const rows = execute
-      ? await client.query<{ id: string; status: LearningFeedbackStatus }>(`
-          WITH candidates AS MATERIALIZED (
-            SELECT target.id, target.governance_version
-            FROM learning_feedback_submissions target
-            WHERE target.tenant_id = $1 AND (
-              (target.status = ANY($2::text[]) AND target.retention_expires_at <= $3)
-              OR (target.status = 'WITHDRAWN' AND target.withdrawn_at IS NOT NULL AND target.withdrawn_at <= $3)
-            ) AND target.updated_at < $5
-            ORDER BY COALESCE(target.withdrawn_at, target.retention_expires_at), target.id
-            LIMIT $4
-            FOR UPDATE OF target SKIP LOCKED
-          )
-          DELETE FROM learning_feedback_submissions target
-          USING candidates
-          WHERE target.id = candidates.id
-            AND target.governance_version = candidates.governance_version
-            AND target.tenant_id = $1 AND target.updated_at < $5 AND (
-            (target.status = ANY($2::text[]) AND target.retention_expires_at <= $3)
-            OR (target.status = 'WITHDRAWN' AND target.withdrawn_at IS NOT NULL AND target.withdrawn_at <= $3)
-            )
-          RETURNING target.id, target.status
-        `, params)
-      : await client.query<{ id: string; status: LearningFeedbackStatus }>(`
+    const rows = await client.query<{ id: string; status: LearningFeedbackStatus }>(`
           SELECT id, status FROM learning_feedback_submissions
           WHERE tenant_id = $1 AND (
             (status = ANY($2::text[]) AND retention_expires_at <= $3)
@@ -325,13 +239,13 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     return {
       runId: input.runId,
       tenantId: input.tenantId,
-      mode,
+      mode: 'DRY_RUN',
       status: 'SUCCEEDED',
       cutoff: input.cutoff.toISOString(),
       operationStartedAt: input.operationStartedAt.toISOString(),
       batchLimit: input.batchLimit,
       candidateCount: rows.rowCount ?? rows.rows.length,
-      deletedCount: execute ? (rows.rowCount ?? rows.rows.length) : 0,
+      deletedCount: 0,
       countsByStatus,
       candidateIds: rows.rows.map((row) => row.id),
       anomalyCount,
@@ -344,7 +258,7 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
       INSERT INTO learning_feedback_retention_runs
         (id, tenant_id, mode, run_status, failure_code, cutoff, operation_started_at, batch_limit, candidate_count, deleted_count, counts_by_status, anomaly_count, actor_pseudonym, pseudonym_key_version, occurred_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-    `, [summary.runId, input.tenantId, summary.mode, summary.status, summary.failureCode ?? null, input.cutoff, input.operationStartedAt, input.batchLimit, summary.candidateCount, summary.deletedCount, summary.countsByStatus, summary.anomalyCount, input.actorPseudonym, input.pseudonymKeyVersion, input.occurredAt]);
+    `, [summary.runId, input.tenantId, summary.mode, summary.status, null, input.cutoff, input.operationStartedAt, input.batchLimit, summary.candidateCount, summary.deletedCount, summary.countsByStatus, summary.anomalyCount, input.actorPseudonym, input.pseudonymKeyVersion, input.occurredAt]);
     await this.auditLogWriter.recordRetentionWithClient(client, {
       actorUserId: input.auditActorId,
       tenantId: input.tenantId,
@@ -352,7 +266,6 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
         runId: summary.runId,
         mode: summary.mode,
         status: summary.status,
-        ...(summary.failureCode === undefined ? {} : { failureCode: summary.failureCode }),
         cutoff: summary.cutoff,
         operationStartedAt: summary.operationStartedAt,
         batchLimit: summary.batchLimit,
@@ -410,18 +323,3 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
  * contract. Callers must provide a dedicated maintenance connection and the
  * expected database role before this adapter exposes DELETE capability.
  */
-export class PostgresLearningFeedbackRetentionMaintenanceAdapter implements LearningFeedbackRetentionMaintenanceAdapter {
-  constructor(private readonly repository: PostgresLearningFeedbackRepository, private readonly expectedRole: string) {}
-
-  async getDatabaseIdentity(): Promise<RetentionDatabaseIdentity> {
-    const result = await this.repository.getMaintenanceIdentity(this.expectedRole);
-    return result;
-  }
-
-  async executeRetention(input: RetentionOperationInput): Promise<LearningFeedbackRetentionSummary> {
-    await this.getDatabaseIdentity();
-    return this.repository.executeRetentionForMaintenance(input);
-  }
-
-  async close(): Promise<void> { await this.repository.close(); }
-}

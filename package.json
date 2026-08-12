@@ -21,7 +21,6 @@
     "test:db:wait": "powershell -ExecutionPolicy Bypass -File scripts/test-db.ps1 wait",
     "test:db:migrate": "powershell -ExecutionPolicy Bypass -File scripts/run-with-test-env.ps1 npm run db:migrate",
     "learning-feedback:retention:dry-run": "tsx apps/api/src/learning-feedback/retention-cli.ts dry-run",
-    "learning-feedback:retention:execute": "tsx apps/api/src/learning-feedback/retention-cli.ts execute",
     "doctor:test-db": "powershell -ExecutionPolicy Bypass -File scripts/doctor-test-db.ps1",
     "doctor:internal-alpha": "node scripts/internal-alpha-doctor.mjs",
     "doctor:internal-alpha-readiness": "node scripts/internal-alpha-readiness-doctor.mjs",

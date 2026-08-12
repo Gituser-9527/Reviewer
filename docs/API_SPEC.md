@@ -1628,4 +1628,4 @@ Review 请求体为：
 
 ### 28.4 Retention 不是公共 API
 
-Retention 仅提供内部命令：`learning-feedback:retention:dry-run` 与 `learning-feedback:retention:execute`，只读取专用 `LEARNING_FEEDBACK_RETENTION_DATABASE_URL`，不回退 `DATABASE_URL` 或 `TEST_DATABASE_URL`。strict parser 拒绝未知、重复、缺值或歧义参数。dry-run 输出由 tenant、数据库名、cutoff、batch 和环境共同计算的安全 `confirmationTarget`；execute 必须同时提供匹配的 `--confirm-target`、`--confirm`、显式 test/development 环境和 `LEARNING_FEEDBACK_RETENTION_EXECUTE_ENABLED=true`。production execute 固定不可用；生产授权和 runbook 尚未实现。一次 execute 只处理一个有界 batch，不存在 HTTP、Extension、全 tenant 或自动 Scheduler 入口。
+Retention 仅提供内部命令 `learning-feedback:retention:dry-run`，只读取专用 `LEARNING_FEEDBACK_RETENTION_DATABASE_URL`，不回退 `DATABASE_URL` 或 `TEST_DATABASE_URL`。strict parser 拒绝未知、重复、缺值或歧义参数。dry-run 要求显式 tenant、cutoff 和有界 batch，输出仅包含最小化候选摘要；不删除 submission/event、不改变业务状态，也没有 HTTP、Extension、全 tenant 或自动 Scheduler 入口。`execute` 输入稳定拒绝为 `LEARNING_FEEDBACK_RETENTION_EXECUTE_UNAVAILABLE`。Destructive Retention execution 延期到独立的 Production Retention 工作，届时需要 dedicated database role、least-privilege grants、separate credentials、deployment provisioning、authenticated authorization、target attestation、audit 和 runbook。
