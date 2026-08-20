@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { getTableConfig } from 'drizzle-orm/pg-core';
+import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   learningFeedbackConsentNoticeVersion,
@@ -20,6 +20,90 @@ const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required for learning feedback PostgreSQL integration tests');
 
 type Chain = { tenantId: string; auditId: string; ticket: HumanReviewTicket; reviewerDecisionId: string; reviewerId: string };
+type CatalogQuery = (statement: string) => Promise<{ rows: Array<Record<string, string>> }>;
+
+const dialect = new PgDialect();
+const keyCheckExpressions = {
+  learning_feedback_submissions_source_check: "source = 'API'",
+  learning_feedback_submissions_status_check: "status IN ('RECEIVED','NEEDS_REVIEW','PRIVACY_REJECTED','APPROVED','REJECTED','WITHDRAWN','PROMOTED_TO_GOLD_SET')",
+  learning_feedback_submissions_consent_scope_check: "consent_scope = 'TENANT_PRIVATE'",
+  learning_feedback_submissions_consent_notice_version_check: "consent_notice_version = 'learning-feedback-v1'",
+  learning_feedback_submissions_purpose_check: "purpose = 'QUALITY_IMPROVEMENT_REVIEW'",
+  learning_feedback_submissions_retention_days_check: 'retention_days > 0',
+  learning_feedback_submissions_governance_version_check: 'governance_version >= 0',
+  learning_feedback_events_event_type_check: "event_type IN ('SUBMITTED','WITHDRAWN','REVIEW_APPROVED','REVIEW_REJECTED')",
+  learning_feedback_events_from_status_check: "from_status IS NULL OR from_status IN ('RECEIVED','NEEDS_REVIEW','PRIVACY_REJECTED','APPROVED','REJECTED','WITHDRAWN','PROMOTED_TO_GOLD_SET')",
+  learning_feedback_events_to_status_check: "to_status IN ('RECEIVED','NEEDS_REVIEW','PRIVACY_REJECTED','APPROVED','REJECTED','WITHDRAWN','PROMOTED_TO_GOLD_SET')",
+  learning_feedback_events_reason_code_check: "reason_code IN ('QUALITY_VALIDATED','INSUFFICIENT_QUALITY','PRIVACY_CONCERN','OUT_OF_SCOPE','OTHER')",
+  learning_feedback_events_event_semantics_check: "(event_type = 'SUBMITTED' AND from_status IS NULL AND to_status IN ('RECEIVED','NEEDS_REVIEW') AND reason_code IS NULL AND reason_note_redacted IS NULL) OR (event_type = 'WITHDRAWN' AND from_status IN ('RECEIVED','NEEDS_REVIEW') AND to_status = 'WITHDRAWN' AND reason_code IS NULL AND reason_note_redacted IS NULL) OR (event_type = 'REVIEW_APPROVED' AND from_status IN ('RECEIVED','NEEDS_REVIEW') AND to_status = 'APPROVED' AND reason_code = 'QUALITY_VALIDATED') OR (event_type = 'REVIEW_REJECTED' AND from_status IN ('RECEIVED','NEEDS_REVIEW') AND to_status = 'REJECTED' AND reason_code IN ('INSUFFICIENT_QUALITY','PRIVACY_CONCERN','OUT_OF_SCOPE','OTHER'))",
+  learning_feedback_events_request_id_check: "request_id IS NULL OR (char_length(request_id) <= 128 AND request_id ~ '^[A-Za-z0-9._:-]+$')",
+  learning_feedback_events_metadata_check: "metadata = '{}'::jsonb",
+  learning_feedback_retention_runs_mode_check: "mode = 'DRY_RUN'",
+  learning_feedback_retention_runs_run_status_check: "run_status = 'SUCCEEDED'",
+  learning_feedback_retention_runs_failure_code_check: "run_status = 'SUCCEEDED' AND failure_code IS NULL AND deleted_count = 0",
+  learning_feedback_retention_runs_batch_limit_check: 'batch_limit > 0',
+  learning_feedback_retention_runs_candidate_count_check: 'candidate_count >= 0',
+  learning_feedback_retention_runs_deleted_count_check: 'deleted_count >= 0',
+  learning_feedback_retention_runs_anomaly_count_check: 'anomaly_count >= 0',
+} as const;
+
+const expectedForeignKeys = {
+  learning_feedback_audit_tenant_fkey: 'FOREIGN KEY (audit_run_id, tenant_id) REFERENCES audit_runs(id, tenant_id) ON DELETE RESTRICT',
+  learning_feedback_decision_chain_fkey: 'FOREIGN KEY (reviewer_decision_id, human_review_ticket_id, audit_run_id, tenant_id) REFERENCES human_review_feedback(id, review_ticket_id, audit_run_id, tenant_id) ON DELETE RESTRICT',
+  learning_feedback_ticket_chain_fkey: 'FOREIGN KEY (human_review_ticket_id, audit_run_id, tenant_id) REFERENCES review_tickets(id, audit_run_id, tenant_id) ON DELETE RESTRICT',
+  learning_feedback_event_submission_tenant_fkey: 'FOREIGN KEY (learning_feedback_id, tenant_id) REFERENCES learning_feedback_submissions(id, tenant_id) ON DELETE CASCADE',
+} as const;
+
+const expectedEventIndexes = {
+  learning_feedback_event_review_uidx: "CREATE UNIQUE INDEX learning_feedback_event_review_uidx ON public.learning_feedback_events USING btree (learning_feedback_id) WHERE (event_type IN ('REVIEW_APPROVED', 'REVIEW_REJECTED'))",
+  learning_feedback_event_submitted_uidx: "CREATE UNIQUE INDEX learning_feedback_event_submitted_uidx ON public.learning_feedback_events USING btree (learning_feedback_id) WHERE (event_type = 'SUBMITTED')",
+  learning_feedback_event_withdrawn_uidx: "CREATE UNIQUE INDEX learning_feedback_event_withdrawn_uidx ON public.learning_feedback_events USING btree (learning_feedback_id) WHERE (event_type = 'WITHDRAWN')",
+  learning_feedback_events_tenant_feedback_idx: 'CREATE INDEX learning_feedback_events_tenant_feedback_idx ON public.learning_feedback_events USING btree (tenant_id, learning_feedback_id, occurred_at)',
+} as const;
+
+function normalizeSqlDefinition(definition: string): string {
+  return definition
+    .toLowerCase()
+    .replace(/"[a-z_]+"\./gu, '')
+    .replace(/"/gu, '')
+    .replace(/\bpublic\./gu, '')
+    .replace(/::[a-z_]+/gu, '')
+    .replace(/=\s*any\s*\(array\s*\[/gu, 'in(')
+    .replace(/\]\s*\)/gu, ')')
+    .replace(/\bcheck\s*/gu, '')
+    .replace(/[()\s]/gu, '');
+}
+
+function drizzleCheckDefinitions(): Map<string, string> {
+  return new Map([learningFeedbackSubmissions, learningFeedbackEvents, learningFeedbackRetentionRuns]
+    .flatMap((table) => getTableConfig(table).checks.map((item) => [item.name, dialect.sqlToQuery(item.value).sql] as const)));
+}
+
+async function assertLearningFeedbackCatalogParity(query: CatalogQuery): Promise<void> {
+  const constraints = await query("SELECT conname AS name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid IN ('learning_feedback_submissions'::regclass,'learning_feedback_events'::regclass,'learning_feedback_retention_runs'::regclass)");
+  const actualConstraints = new Map(constraints.rows.map((row) => [row.name, row.definition]));
+  const drizzleChecks = drizzleCheckDefinitions();
+  for (const [name, expression] of Object.entries(keyCheckExpressions)) {
+    expect(normalizeSqlDefinition(actualConstraints.get(name) ?? '')).toBe(normalizeSqlDefinition(`CHECK (${expression})`));
+    expect(normalizeSqlDefinition(drizzleChecks.get(name) ?? '')).toBe(normalizeSqlDefinition(expression));
+  }
+
+  const foreignKeys = await query("SELECT conname AS name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE contype='f' AND conrelid IN ('learning_feedback_submissions'::regclass,'learning_feedback_events'::regclass)");
+  expect(Object.fromEntries(foreignKeys.rows.map((row) => [row.name, row.definition]))).toEqual(expectedForeignKeys);
+
+  const indexes = await query("SELECT indexname AS name, indexdef AS definition FROM pg_indexes WHERE tablename='learning_feedback_events'");
+  const actualIndexes = new Map(indexes.rows.map((row) => [row.name, row.definition]));
+  for (const [name, definition] of Object.entries(expectedEventIndexes)) {
+    expect(normalizeSqlDefinition(actualIndexes.get(name) ?? '')).toBe(normalizeSqlDefinition(definition));
+  }
+
+  const triggers = await query("SELECT tgname AS name, pg_get_triggerdef(oid) AS definition, pg_get_functiondef(tgfoid) AS function_definition FROM pg_trigger WHERE tgrelid='learning_feedback_events'::regclass AND NOT tgisinternal");
+  const trigger = triggers.rows.find((row) => row.name === 'learning_feedback_event_truth_trigger');
+  expect(normalizeSqlDefinition(trigger?.definition ?? '')).toBe(normalizeSqlDefinition('CREATE TRIGGER learning_feedback_event_truth_trigger BEFORE INSERT ON public.learning_feedback_events FOR EACH ROW EXECUTE FUNCTION enforce_learning_feedback_event_truth()'));
+  expect(normalizeSqlDefinition(trigger?.function_definition ?? '')).toContain(normalizeSqlDefinition('ORDER BY occurred_at DESC, id DESC LIMIT 1'));
+  expect(normalizeSqlDefinition(trigger?.function_definition ?? '')).toContain(normalizeSqlDefinition('submission_status <> NEW.to_status'));
+  expect(normalizeSqlDefinition(trigger?.function_definition ?? '')).toContain(normalizeSqlDefinition('previous_status <> NEW.from_status'));
+}
 
 describe('PostgresLearningFeedbackRepository integration', () => {
   const pool = new Pool({ connectionString: testDatabaseUrl });
@@ -281,26 +365,20 @@ describe('PostgresLearningFeedbackRepository integration', () => {
     await expectPgError(insert({ requestId: 'x'.repeat(100_000) }), '23514');
   });
 
-  it('installs the event truth trigger and named parity constraints', async () => {
-    const trigger = await pool.query<{ name: string; definition: string }>("SELECT tgname AS name, pg_get_triggerdef(oid) AS definition FROM pg_trigger WHERE tgrelid='learning_feedback_events'::regclass AND NOT tgisinternal");
-    expect(trigger.rows.map((row) => row.name)).toContain('learning_feedback_event_truth_trigger');
-    expect(trigger.rows.find((row) => row.name === 'learning_feedback_event_truth_trigger')?.definition).toContain('enforce_learning_feedback_event_truth');
-    const constraints = await pool.query<{ name: string; definition: string }>("SELECT conname AS name, pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid IN ('learning_feedback_submissions'::regclass,'learning_feedback_events'::regclass,'learning_feedback_retention_runs'::regclass)");
-    expect(constraints.rows.map((row) => row.name)).toEqual(expect.arrayContaining([
-      'learning_feedback_submissions_source_check', 'learning_feedback_submissions_status_check',
-      'learning_feedback_events_event_semantics_check', 'learning_feedback_events_request_id_check',
-      'learning_feedback_retention_runs_run_status_check', 'learning_feedback_retention_runs_failure_code_check',
-    ]));
-    const drizzleChecks = [learningFeedbackSubmissions, learningFeedbackEvents, learningFeedbackRetentionRuns]
-      .flatMap((table) => getTableConfig(table).checks.map((item) => item.name));
-    for (const name of constraints.rows.map((row) => row.name).filter((name) => name.startsWith('learning_feedback_') && name.endsWith('_check'))) {
-      expect(drizzleChecks).toContain(name);
+  it('compares key PostgreSQL definitions with the Drizzle learning-feedback contract', async () => {
+    await assertLearningFeedbackCatalogParity((statement) => pool.query(statement));
+  });
+
+  it('detects a same-name event CHECK mutation and rolls it back', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('ALTER TABLE learning_feedback_events DROP CONSTRAINT learning_feedback_events_event_semantics_check');
+      await client.query('ALTER TABLE learning_feedback_events ADD CONSTRAINT learning_feedback_events_event_semantics_check CHECK (true)');
+      await expect(assertLearningFeedbackCatalogParity((statement) => client.query(statement))).rejects.toThrow();
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
     }
-    const failure = constraints.rows.find((row) => row.name === 'learning_feedback_retention_runs_failure_code_check');
-    expect(failure?.definition).toContain("run_status = 'SUCCEEDED'");
-    const foreignKeys = await pool.query<{ definition: string }>("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE contype='f' AND conrelid='learning_feedback_events'::regclass");
-    expect(foreignKeys.rows.some((row) => row.definition.includes('learning_feedback_submissions'))).toBe(true);
-    const indexes = await pool.query<{ definition: string }>("SELECT indexdef AS definition FROM pg_indexes WHERE tablename='learning_feedback_events'");
-    expect(indexes.rows.some((row) => row.definition.includes('learning_feedback_events_tenant_feedback_idx'))).toBe(true);
   });
 });

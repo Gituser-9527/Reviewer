@@ -29,7 +29,7 @@ describe('learning feedback retention command safety', () => {
 
   it('strictly rejects unknown, repeated, missing, ambiguous and invalid arguments', () => {
     const invalidArgs = [
-      [], ['unknown'], ['dry-run', '--unknown'], ['dry-run', '--tenant-id'],
+      [], ['unknown'], ['dry-run', '--unknown'], ['dry-run', '--tenant-id'], ['dry-run', '--tenant-id', 'tenant-a'],
       ['dry-run', '--tenant-id', '--limit', '3'], ['dry-run', '--tenant-id', 'tenant-a', '--tenant-id', 'tenant-b'],
       ['dry-run', '--tenant-id', ' tenant-a'], ['dry-run', '--tenant-id', 'tenant-a '],
       ['dry-run', '--tenant-id', 'tenant-a', '--limit', '3', '--limit', '4'],

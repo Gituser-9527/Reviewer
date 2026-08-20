@@ -148,7 +148,6 @@ export interface LearningFeedbackRetentionSummary {
   candidateCount: number;
   deletedCount: number;
   countsByStatus: Partial<Record<LearningFeedbackStatus, number>>;
-  candidateIds: string[];
   anomalyCount: number;
   occurredAt: string;
 }

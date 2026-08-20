@@ -226,8 +226,8 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     const anomaly = await client.query<{ count: string }>("SELECT count(*)::text AS count FROM learning_feedback_submissions WHERE tenant_id = $1 AND status = 'PROMOTED_TO_GOLD_SET'", [input.tenantId]);
     const anomalyCount = Number(anomaly.rows[0]?.count ?? '0');
     const params = [input.tenantId, [...learningFeedbackRetentionExpiryStatuses], input.cutoff, input.batchLimit, input.operationStartedAt];
-    const rows = await client.query<{ id: string; status: LearningFeedbackStatus }>(`
-          SELECT id, status FROM learning_feedback_submissions
+    const rows = await client.query<{ status: LearningFeedbackStatus }>(`
+          SELECT status FROM learning_feedback_submissions
           WHERE tenant_id = $1 AND (
             (status = ANY($2::text[]) AND retention_expires_at <= $3)
             OR (status = 'WITHDRAWN' AND withdrawn_at IS NOT NULL AND withdrawn_at <= $3)
@@ -247,7 +247,6 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
       candidateCount: rows.rowCount ?? rows.rows.length,
       deletedCount: 0,
       countsByStatus,
-      candidateIds: rows.rows.map((row) => row.id),
       anomalyCount,
       occurredAt: input.occurredAt.toISOString(),
     };
@@ -317,9 +316,3 @@ export class PostgresLearningFeedbackRepository implements LearningFeedbackRepos
     return row?.payload;
   }
 }
-
-/**
- * Destructive Retention is deliberately kept out of the ordinary repository
- * contract. Callers must provide a dedicated maintenance connection and the
- * expected database role before this adapter exposes DELETE capability.
- */

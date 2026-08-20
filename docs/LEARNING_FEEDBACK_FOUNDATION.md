@@ -20,7 +20,7 @@ Withdrawal and review lock the tenant-scoped submission row. Only `RECEIVED/NEED
 
 During a submission's lifecycle, the application Repository only appends `SUBMITTED`, `WITHDRAWN`, `REVIEW_APPROVED`, or `REVIEW_REJECTED`; it does not update old events. This is not a WORM or legal immutability guarantee. Actors are tenant-scoped HMAC pseudonyms; reason notes and bounded correlation IDs use canonical security handling.
 
-Retention only provides tenant-scoped policy inspection/dry-run with a bounded batch and cutoff. It writes a minimal inspection run/Audit Log but never deletes submissions or events, changes business state, or exposes a public HTTP route. Gold state is reported as an anomaly count in dry-run. Destructive Retention execution is intentionally unavailable and deferred to a separate production operations change requiring dedicated database roles, credentials, authenticated authorization, target attestation and a runbook. No Scheduler exists.
+Retention only provides tenant-scoped policy inspection/dry-run with an explicit cutoff and bounded batch. Its CLI and persisted run/Audit Log expose only a minimal statistical summary, never candidate IDs or feedback content. It never deletes submissions or events, changes business state, or exposes a public HTTP route. Gold state is reported as an anomaly count in dry-run. Destructive Retention execution is intentionally unavailable and deferred to a separate production operations change requiring dedicated database roles, credentials, authenticated authorization, target attestation and a runbook. No Scheduler exists.
 
 ## Implemented foundation versus remaining work
 

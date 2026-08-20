@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgresAuditRunRepository, PostgresLearningFeedbackRepository } from '@job-compliance/database';
 import { learningFeedbackConsentNoticeVersion, learningFeedbackPurpose, learningFeedbackSource, type AuditResult, type JobPostingInput, type LearningFeedbackSubmission } from '@job-compliance/shared';
 import { runRetentionCli } from './retention-cli.js';
@@ -43,11 +43,26 @@ describe('learning feedback retention PostgreSQL inspection', () => {
     expect(after.rows).toEqual(before.rows);
     const stored = await pool.query<{ stored: string }>('SELECT to_jsonb(learning_feedback_retention_runs)::text AS stored FROM learning_feedback_retention_runs WHERE id=$1', [summary.runId]);
     expect(stored.rows[0]?.stored).not.toContain('LEARNING_RETENTION_SECRET_179');
+    expect(summary).not.toHaveProperty('candidateIds');
   });
 
-  it('rejects CLI execute and does not use generic database URLs', async () => {
+  it('requires explicit cutoff, omits candidate IDs from CLI output, and rejects execute', async () => {
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const dedicated = { LEARNING_FEEDBACK_RETENTION_ACTOR_ID: 'maintenance', LEARNING_FEEDBACK_PSEUDONYM_KEY: 'key', LEARNING_FEEDBACK_RETENTION_DATABASE_URL: testDatabaseUrl };
+    try {
+      await expect(runRetentionCli(['dry-run', '--tenant-id', tenantId], dedicated)).resolves.toBe(1);
+      await expect(runRetentionCli(['dry-run', '--tenant-id', tenantId, '--cutoff', '2026-02-01T00:00:00.000Z'], dedicated)).resolves.toBe(0);
+      const response = output.mock.calls.at(-1)?.[0]?.toString() ?? '';
+      expect(response).not.toContain('candidateIds');
+      expect(response).not.toContain('LEARNING_RETENTION_SECRET_179');
+      await expect(runRetentionCli(['execute', '--tenant-id', tenantId], dedicated)).resolves.toBe(1);
+    } finally {
+      output.mockRestore();
+    }
+  });
+
+  it('does not use generic database URLs', async () => {
     const env = { LEARNING_FEEDBACK_RETENTION_ACTOR_ID: 'maintenance', LEARNING_FEEDBACK_PSEUDONYM_KEY: 'key', DATABASE_URL: testDatabaseUrl, TEST_DATABASE_URL: testDatabaseUrl };
-    await expect(runRetentionCli(['execute', '--tenant-id', tenantId], env)).resolves.toBe(1);
     await expect(runRetentionCli(['dry-run', '--tenant-id', tenantId], env)).resolves.toBe(1);
   });
 });

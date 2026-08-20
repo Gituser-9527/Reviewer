@@ -11,7 +11,7 @@ Learning Feedback links an authenticated human decision to privacy-quarantined q
 
 V1 remains tenant-private. PostgreSQL composite constraints bind the audit run, review ticket and reviewer decision. Submit is atomic and idempotent. Withdraw and manager review lock the row and let the Repository derive a pseudonymous event from the database-real old state; CHECK constraints and a trigger validate the event chain. Events are application-append-only during the submission lifecycle, not WORM.
 
-Retention has one typed policy and tenant-scoped bounded dry-run inspection. It uses a dedicated database URL and strict parser. Destructive execution is intentionally unavailable: `execute` is rejected and PR #8 has no deletion SQL path. Gold is reported as an anomaly count. There is no automatic recovery, all-tenant mode or Scheduler.
+Retention has one typed policy and tenant-scoped bounded dry-run inspection. It uses a dedicated database URL and strict parser with an explicit cutoff; CLI output is a minimal statistical summary without candidate IDs. Destructive execution is intentionally unavailable: `execute` is rejected and PR #8 has no deletion SQL path. Gold is reported as an anomaly count. There is no automatic recovery, all-tenant mode or Scheduler.
 
 ## Consequences
 

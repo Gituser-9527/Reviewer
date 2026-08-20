@@ -22,8 +22,9 @@ export function parseRetentionArgs(args: string[], env: NodeJS.ProcessEnv = proc
   if (tenantId.length === 0 || tenantId !== tenantId.trim()) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention requires an unambiguous tenant.');
   const limitValue = values.get('--limit') ?? '100';
   const cutoffValue = values.get('--cutoff');
+  if (cutoffValue === undefined) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention requires an explicit cutoff.');
   const batchLimit = Number(limitValue);
-  const cutoff = cutoffValue === undefined ? new Date() : new Date(cutoffValue);
+  const cutoff = new Date(cutoffValue);
   if (!Number.isInteger(batchLimit) || batchLimit < 1 || batchLimit > 500 || !Number.isFinite(cutoff.getTime())) throw new LearningFeedbackError('LEARNING_FEEDBACK_UNAVAILABLE', 'Retention arguments are invalid.');
   return {
     mode,

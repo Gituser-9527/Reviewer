@@ -12,9 +12,9 @@
 | Sensitive review reason leaks | Controlled reason-code/status matrix, bounded note and canonical security sanitizer | Free text is optional and never copied into generic audit metadata |
 | Dry-run candidate policy drifts | One shared typed policy and tenant-scoped bounded query | PostgreSQL state-matrix regression is required for release |
 | Cross-tenant or unbounded inspection | Dedicated URL, strict CLI, explicit tenant and bounded batch | Destructive execution and all-tenant/public routes remain unavailable |
-| Review/Withdraw races cleanup | Database operation-start fence plus governance-version snapshot and row locks | Winner is linearized; the same record cannot be both transitioned and counted deleted in one overlap |
+| Review/Withdraw races a future cleanup | PR #8 has no destructive Retention path; Review/Withdraw retain their own row-lock/CAS protection | Future Production Retention Execution must separately design and verify fencing/linearization |
 | Reserved Gold record is deleted | PR #8 has no destructive Retention path; dry-run reports an anomaly count | No automatic Gold mutation |
-| Cleanup logs expose feedback | Retention run and general audit contain counts/statuses only | Candidate IDs may appear only in command response, never in persisted summaries |
+| Dry-run output or logs expose feedback | Retention run, general audit and CLI response contain only the minimal statistical summary | No candidate IDs, payload, comment, evidence, digest or database parameters are emitted |
 | Automatic deletion is enabled accidentally | No Scheduler and `execute` is explicitly unavailable | Production execution requires a separate role/credentials/authorization/runbook change |
 
 V1 has no extension capture, external model call, automatic export, destructive retention execution, automatic retention Scheduler, or global anonymized data flow. Dry-run inspection is verified only against the dedicated test PostgreSQL environment in this change.
