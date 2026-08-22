@@ -3,6 +3,7 @@ import {
   learningFeedbackConsentNoticeVersion,
   learningFeedbackPurpose,
   learningFeedbackSource,
+  type LearningFeedbackEvent,
   type LearningFeedbackStatus,
 } from '@job-compliance/shared';
 import { InMemoryLearningFeedbackRepository, LearningFeedbackError, LearningFeedbackService } from './service.js';
@@ -72,6 +73,23 @@ describe('LearningFeedbackService', () => {
     const events = await subject.listEvents(results[0]!.id, 'tenant-a');
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ eventType: 'SUBMITTED', toStatus: 'RECEIVED' });
+  });
+
+  it('orders InMemory lifecycle events by occurredAt and id like PostgreSQL', async () => {
+    const { repository, subject } = setup();
+    const preview = subject.preview(ticket, input('event-order'));
+    const record = await subject.submit(ticket, 'reviewer-a', { ...input('event-order'), digest: preview.digest, explicitConfirmation: true });
+    const occurredAt = '2026-08-22T00:00:00.000Z';
+    const events = repository as unknown as { events: Map<string, LearningFeedbackEvent[]> };
+    events.events.set(record.id, [
+      { id: 'event-z', tenantId: 'tenant-a', learningFeedbackId: record.id, eventType: 'SUBMITTED', toStatus: 'RECEIVED', actorPseudonym: 'a'.repeat(64), pseudonymKeyVersion: 'test-v1', occurredAt },
+      { id: 'event-a', tenantId: 'tenant-a', learningFeedbackId: record.id, eventType: 'WITHDRAWN', fromStatus: 'RECEIVED', toStatus: 'WITHDRAWN', actorPseudonym: 'a'.repeat(64), pseudonymKeyVersion: 'test-v1', occurredAt },
+    ]);
+
+    await expect(subject.listEvents(record.id, 'tenant-a')).resolves.toMatchObject([
+      { id: 'event-a', occurredAt },
+      { id: 'event-z', occurredAt },
+    ]);
   });
 
   it('fails closed for global consent, a wrong reviewer and a changed preview', async () => {
