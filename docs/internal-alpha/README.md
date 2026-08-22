@@ -20,6 +20,10 @@
 
 Doctor 仅检查本地版本、文件、Manifest、URL 静态格式和配置变量是否存在。Doctor 通过不表示 Alpha API 已在线、数据库已连接、tenant 已创建、Token 有效或 CORS 已部署；真人 Pilot 前仍须由维护人员人工验证 health、migration、专用 tenant、最小权限凭据、精确 extension Origin 以及一次受控真实审核。
 
+## 完全本地测试人员 Bootstrap
+
+有基本技术能力的内部测试人员可按 [LOCAL_TESTER_GUIDE.md](./LOCAL_TESTER_GUIDE.md) 从干净 `main` clone 建立完全 loopback、非生产的本地 Alpha。它使用独立 Docker PostgreSQL、固定本地 tenant、gitignored 的本机开发凭据和人工获取的精确 extension ID；不替代共享 Alpha、生产部署或真人 Pilot Go/No-Go。
+
 启动前使用 [ALPHA_READINESS_CHECKLIST.md](./ALPHA_READINESS_CHECKLIST.md) 记录准备状态，以 [ALPHA_GO_NO_GO_TEMPLATE.md](./ALPHA_GO_NO_GO_TEMPLATE.md) 记录人工 Go/No-Go 决策；[ALPHA_READINESS_DOCTOR_DESIGN.md](./ALPHA_READINESS_DOCTOR_DESIGN.md) 说明本地静态 Doctor 与后续只读探测的边界。
 
 维护人员可使用 [LOCAL_SMOKE_RUNBOOK.md](./LOCAL_SMOKE_RUNBOOK.md) 在完全本地、脱敏夹具中进行一次人工 ASSIST Smoke；该 Smoke 不属于真人 Pilot，也不构成 Alpha Go。

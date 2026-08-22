@@ -11,6 +11,7 @@ node_modules/
 apps/extension/dist/
 .browser-profile/
 .tmp-extension-profile/
+.local/internal-alpha/
 .local/internal-alpha-smoke/
 playwright-report/
 test-results/
