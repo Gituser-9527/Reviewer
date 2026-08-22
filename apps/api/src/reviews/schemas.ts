@@ -51,14 +51,16 @@ export const createReviewBodySchema = z
 /** Body accepted by POST /api/reviews/:id/decision. */
 export const submitReviewDecisionBodySchema = z
   .object({
-    reviewerId: nonEmptyText.max(200).default('mock_reviewer'),
+    /** Accepted only as a legacy transport field and discarded before routing. */
+    reviewerId: z.unknown().optional(),
     finalDecision: z.enum(['APPROVE', 'REJECT', 'REQUEST_REVISION']),
     feedbackType: z.enum(feedbackTypes).default('VALID_RESULT'),
     comment: z.string().max(5_000).default(''),
     falsePositive: z.boolean().default(false),
     falseNegative: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .transform(({ reviewerId: _untrustedReviewerId, ...body }) => body);
 
 export type SubmitReviewDecisionBody = z.infer<typeof submitReviewDecisionBodySchema>;
 

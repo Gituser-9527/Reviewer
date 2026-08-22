@@ -1589,3 +1589,43 @@ Prompt 模板发布前执行自动质量检查。
 - 数据库枚举扩展不等于 API 客户端自动兼容；SDK 应保留 unknown 分支
 - 规则版本与 API 版本独立
 - 响应中的依据文本是审核时快照，不应通过后续更新静默改变
+
+## 28. Learning Feedback V1（租户私有隔离区）
+
+本节是 Learning Feedback V1 的权威 HTTP 契约。该能力只收集已完成的人工复核决定，用于租户内、人工治理的质量分析；它不参与审核结论、严重度、规则、模型训练或 Gold Set。
+
+### 28.1 路由和权限
+
+| 路由 | 权限 | 语义 |
+| --- | --- | --- |
+| `POST /api/reviews/{id}/learning-feedback/preview` | `learning-feedback:write` | 对已认证 Reviewer 本人完成的决定生成服务端脱敏预览和 digest |
+| `POST /api/reviews/{id}/learning-feedback` | `learning-feedback:write` | 显式确认后原子幂等提交到 Quarantine |
+| `GET /api/learning-feedback` | `learning-feedback:read` | 只列出认证 tenant 的记录 |
+| `GET /api/learning-feedback/{id}` | `learning-feedback:read` | 只查认证 tenant 的记录 |
+| `POST /api/learning-feedback/{id}/withdraw` | `learning-feedback:write` | 仅原人工决定 Reviewer 可将 `RECEIVED/NEEDS_REVIEW` 撤回 |
+| `POST /api/learning-feedback/{id}/review` | `learning-feedback:review` | 管理员 CAS 审批并追加领域事件 |
+| `POST /api/learning-feedback/{id}/promote-to-gold-set` | `learning-feedback:review` | 固定返回 `409 GOLD_SET_PROMOTION_UNAVAILABLE` |
+
+tenant 只取认证上下文，客户端不能提交 tenant 或 reviewer 身份。未知 ID 与跨 tenant ID 对普通读取/提交呈现相同的 `404`；权限不足仍返回 `403`。`AUDIT_OPERATOR` 不拥有上述新权限。
+
+### 28.2 Preview 与 Submit
+
+客户端可提交 `consentScope=TENANT_PRIVATE`、`retentionDays`、受限长度的 `comment` 与 `evidenceFragments`。`GLOBAL_ANONYMIZED` 固定不可用。`source=API`、`purpose=QUALITY_IMPROVEMENT_REVIEW` 和 `consentNoticeVersion=learning-feedback-v1` 均由服务端注入，客户端提交这些字段会校验失败。Preview 和 Submit 使用同一权威安全清洗器；Submit 必须携带当前 Preview 的 `digest` 和 `explicitConfirmation=true`。
+
+### 28.3 审批与冲突
+
+Review 请求体为：
+
+```json
+{
+  "status": "APPROVED",
+  "reasonCode": "QUALITY_VALIDATED",
+  "reasonNote": "可选、限长且服务端脱敏"
+}
+```
+
+`APPROVED` 只兼容 `QUALITY_VALIDATED`；`REJECTED` 兼容 `INSUFFICIENT_QUALITY`、`PRIVACY_CONCERN`、`OUT_OF_SCOPE` 或 `OTHER`。只有 `RECEIVED/NEEDS_REVIEW` 可转为 `APPROVED/REJECTED`。Repository 在事务行锁内读取数据库真实旧状态、更新 payload/独立列并内部构造事件；调用方不能指定 event ID、feedback ID、tenant、event type 或 from/to status。并发或重复审批的失败方返回 `409 LEARNING_FEEDBACK_STATE_CONFLICT`，不采用最后写入获胜。事件 request ID 仅保留 128 字符以内的安全 correlation 格式；其他值保存为不可逆 SHA-256 token。
+
+### 28.4 Retention 不是公共 API
+
+Retention 仅提供内部命令 `learning-feedback:retention:dry-run`，只读取专用 `LEARNING_FEEDBACK_RETENTION_DATABASE_URL`，不回退 `DATABASE_URL` 或 `TEST_DATABASE_URL`。strict parser 拒绝未知、重复、缺值或歧义参数；dry-run 要求显式 tenant、cutoff 和有界 batch。命令响应的最小统计摘要包含 run ID、tenant、mode/status、cutoff、operationStartedAt、batch、候选总数、deletedCount（固定为 0）、按状态统计、Gold anomaly 数量和 occurredAt，不包含 candidate ID、payload、comment、evidence 或数据库参数；不删除 submission/event、不改变业务状态，也没有 HTTP、Extension、全 tenant 或自动 Scheduler 入口。`execute` 输入稳定拒绝为 `LEARNING_FEEDBACK_RETENTION_EXECUTE_UNAVAILABLE`。Destructive Retention execution 延期到独立的 Production Retention 工作，届时需要 dedicated database role、least-privilege grants、separate credentials、deployment provisioning、authenticated authorization、target attestation、audit 和 runbook。

@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       'apps/**/*.postgres.test.ts',
       'packages/database/src/repository.integration.test.ts',
+      'packages/database/src/learning-feedback-repository.postgres.test.ts',
     ],
   },
 });

@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { PostgresAuditRunRepository, PostgresEvalRepository, PostgresLLMPersistenceRepository } from '@job-compliance/database';
+import { PostgresAuditRunRepository, PostgresEvalRepository, PostgresLLMPersistenceRepository, PostgresLearningFeedbackRepository } from '@job-compliance/database';
 import type { HealthResponse } from '@job-compliance/shared';
 import { ZodError } from 'zod';
 import { DatabaseAuditRunStore } from './audit/database-store.js';
@@ -20,12 +20,14 @@ import { IncidentResponseService } from './incidents/service.js';
 import { registerIntegrationRoutes } from './integrations/routes.js';
 import { IntegrationApiError, IntegrationService } from './integrations/service.js';
 import { registerLabelingRoutes } from './labeling/routes.js';
+import { registerLearningFeedbackRoutes } from './learning-feedback/routes.js';
+import { LearningFeedbackError, LearningFeedbackService } from './learning-feedback/service.js';
 import { LabelingService } from './labeling/service.js';
 import { registerLaunchSecurityRoutes } from './launch-check/routes.js';
 import { LaunchSecurityComplianceService } from './launch-check/service.js';
 import { registerKnowledgeUpdateRoutes } from './knowledge-update/routes.js';
 import { LawKbUpdateService } from './knowledge-update/service.js';
-import { registerOperationalLogging, type ReadinessCheck, sendMetrics } from './operations.js';
+import { registerOperationalLogging, safeErrorLogDetails, type ReadinessCheck, sendMetrics } from './operations.js';
 import { registerPerformanceRoutes } from './performance/routes.js';
 import { createPerformanceServices, RateLimitError, type PerformanceServices } from './performance/service.js';
 import { registerPilotRoutes } from './pilot/routes.js';
@@ -83,6 +85,8 @@ export interface BuildAppOptions {
   betaTrialService?: BetaTrialService;
   /** Optional labeling service used by tests or future persistence adapters. */
   labelingService?: LabelingService;
+  /** Optional explicit learning feedback service. In production it requires PostgreSQL. */
+  learningFeedbackService?: LearningFeedbackService;
   /** Optional auth, RBAC and audit logging services. */
   authServices?: AuthServices;
   /** Optional launch security compliance service used by tests or future persistence adapters. */
@@ -214,6 +218,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const uatAcceptanceService =
     options.uatAcceptanceService ?? new UatAcceptanceService(betaProgramService);
   const labelingService = options.labelingService ?? new LabelingService();
+  const learningFeedbackService = options.learningFeedbackService ?? (process.env.DATABASE_URL?.trim()
+    ? new LearningFeedbackService(new PostgresLearningFeedbackRepository({ connectionString: process.env.DATABASE_URL }))
+    : new LearningFeedbackService(undefined));
   const authServices = options.authServices ?? createAuthServices();
   const launchSecurityService =
     options.launchSecurityService ?? new LaunchSecurityComplianceService();
@@ -294,6 +301,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       });
     }
 
+    if (error instanceof LearningFeedbackError) {
+      const statusCode = error.code === 'LEARNING_FEEDBACK_NOT_FOUND' ? 404 : error.code === 'LEARNING_FEEDBACK_WITHDRAW_FORBIDDEN' ? 403 : error.code === 'GLOBAL_LEARNING_CONSENT_UNAVAILABLE' || error.code === 'PREVIEW_DIGEST_MISMATCH' || error.code === 'LEARNING_FEEDBACK_STATE_INVALID' || error.code === 'LEARNING_FEEDBACK_STATE_CONFLICT' ? 409 : error.code === 'LEARNING_FEEDBACK_UNAVAILABLE' ? 503 : 422;
+      return reply.code(statusCode).send({ requestId: request.id, error: { code: error.code, message: error.message, retryable: false } });
+    }
+
     if (error instanceof ProductApiError) {
       return reply.code(error.statusCode).send({
         requestId: request.id,
@@ -327,7 +339,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       });
     }
 
-    request.log.error({ err: error }, 'Unhandled request error');
+    request.log.error({ error: safeErrorLogDetails(error) }, 'Unhandled request error');
     return reply.code(500).send({
       requestId: request.id,
       error: {
@@ -406,6 +418,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     reviewStore,
     labelingService,
   });
+
+  registerLearningFeedbackRoutes(app, { reviewStore, service: learningFeedbackService, authServices });
 
   registerEvalRoutes(app, {
     evalStore,
@@ -489,6 +503,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     await auditRunStore.close?.();
     await reviewStore.close?.();
     await evalStore.close?.();
+    await learningFeedbackService.close?.();
   });
 
   return app;

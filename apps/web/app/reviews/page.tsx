@@ -227,7 +227,6 @@ export default function HumanReviewsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          reviewerId,
           finalDecision,
           feedbackType,
           comment,

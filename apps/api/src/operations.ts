@@ -25,6 +25,27 @@ export const metricsState: MetricsState = {
   startedAt: Date.now(),
 };
 
+/** Whitelists database error metadata without serializing messages, causes or SQL parameters. */
+export function safeErrorLogDetails(error: unknown): {
+  errorType: 'DATABASE_ERROR' | 'APPLICATION_ERROR';
+  code?: string;
+  constraint?: string;
+} {
+  const direct = asRecord(error);
+  const cause = asRecord(direct?.cause);
+  const rawCode = cause?.code ?? direct?.code;
+  const code = typeof rawCode === 'string' && /^[0-9A-Z]{5}$/u.test(rawCode) ? rawCode : undefined;
+  const rawConstraint = cause?.constraint ?? direct?.constraint;
+  const constraint = code !== undefined && typeof rawConstraint === 'string' && /^[a-z][a-z0-9_]{0,99}$/u.test(rawConstraint)
+    ? rawConstraint
+    : undefined;
+  return {
+    errorType: code === undefined ? 'APPLICATION_ERROR' : 'DATABASE_ERROR',
+    ...(code === undefined ? {} : { code }),
+    ...(constraint === undefined ? {} : { constraint }),
+  };
+}
+
 /** Registers sanitized request and error logging hooks. */
 export function registerOperationalLogging(app: FastifyInstance): void {
   app.addHook('onRequest', async (request) => {
@@ -63,11 +84,15 @@ export function registerOperationalLogging(app: FastifyInstance): void {
         method: request.method,
         url: request.url,
         statusCode: reply.statusCode,
-        err: error,
+        error: safeErrorLogDetails(error),
       },
       'request failed',
     );
   });
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined;
 }
 
 /** Renders a Prometheus-compatible metrics placeholder. */

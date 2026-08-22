@@ -1292,3 +1292,13 @@ Beta 交付包是试运行运营层能力，不应直接改变审核结论；所
 3. 审核输入、审核、命中和模型执行表
 4. 人工决策、审计和幂等表
 5. RAG 文档与向量表（后续阶段）
+
+## 7. Learning Feedback V1 数据治理契约
+
+`learning_feedback_submissions` 是租户私有 Quarantine 记录。它通过复合唯一键和复合外键独立保证 `tenant_id → audit_run_id → human_review_ticket_id → reviewer_decision_id` 属于同一业务链；所有外键删除行为为 `RESTRICT`。幂等唯一键为 `(tenant_id, reviewer_decision_id, digest, consent_notice_version)`，普通查询和状态更新必须同时携带 `id` 与 `tenant_id`。`governance_version` 在每次 Review/Withdraw 迁移时递增；PR #8 的 Retention 仅 dry-run，不存在与删除并发的运行时路径。未来 Production Retention Execution 若引入删除，必须重新设计并验证相应的 fencing/线性化语义。
+
+`learning_feedback_events` 在 submission 生命周期内通过应用 Repository 只追加：普通业务代码不更新旧事件，但这不是 WORM 或法律级不可篡改日志。Repository 内部构造事件，数据库 trigger 校验当前 submission 状态、上一个事件、from/to、event type、reason matrix 与事件时间。request ID 最长 128 字符且只允许安全 correlation 字符，其他输入在持久化前哈希。局部唯一索引保证一次提交、一次撤回和一个终态审批事件。
+
+`learning_feedback_retention_runs` 保存最小化 dry-run 摘要：run ID、tenant、`DRY_RUN/SUCCEEDED`、cutoff、数据库事务开始时间、batch、候选数量、删除数量（固定为 0）、按状态数量、Gold anomaly 数量、执行者伪名和时间；不保存 submission ID、payload、comment、evidence、digest 或数据库参数。CLI 使用同一最小化公开摘要，不返回 candidate ID。事务型权威 Audit Writer 通过 `packages/core/src/security/` 清洗同一最小 DTO，并以同一 run ID 写入 `audit_operation_logs`。
+
+Retention V1 的唯一状态策略仅用于 dry-run inspection：`RECEIVED/NEEDS_REVIEW/APPROVED/REJECTED/PRIVACY_REJECTED` 在 `retention_expires_at <= cutoff` 时成为候选；`WITHDRAWN` 在 `withdrawn_at <= cutoff` 时成为候选；`PROMOTED_TO_GOLD_SET` 永不删除并作为 anomaly 计数报告。PR #8 不提供任何删除 SQL 运行路径。未来 Production Retention Execution 必须单独实现最小权限数据库角色、独立凭据、部署 provisioning、认证授权、target attestation、审计和 runbook。

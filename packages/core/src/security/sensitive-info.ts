@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
+import { learningFeedbackRequestIdMaxLength, learningFeedbackRequestIdPattern } from '@job-compliance/shared';
 import type { LLMMessage } from '../llm/types.js';
 import type { SanitizeAuditLogOptions, SensitiveInfoMatch, SensitiveInfoType } from './types.js';
 
@@ -19,6 +20,13 @@ const addressPattern =
   /[\u4e00-\u9fa5]{2,}(?:省|市|区|县|镇|乡|街道|路|街|巷|弄)[\u4e00-\u9fa50-9号栋幢单元室楼-]{4,}/gu;
 const verificationCodePattern =
   /(?:验证码|校验码|动态码|短信码|verification code)\s*[：:是为]?\s*([A-Za-z0-9]{4,10})/giu;
+const databaseUrlPattern =
+  /(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s,;]+/giu;
+const authorizationPattern =
+  /(?:authorization\s*:\s*)?bearer\s+[A-Za-z0-9._~+/=-]+/giu;
+const apiTokenPattern =
+  /(?:api[_ -]?key|access[_ -]?token|token)\s*[:=]\s*[^\s,;]+/giu;
+const urlPattern = /https?:\/\/[^\s]+/giu;
 
 function maskMiddle(
   value: string,
@@ -65,6 +73,10 @@ function redactVerificationCode(value: string): string {
 }
 
 const detectionPatterns: DetectionPattern[] = [
+  { type: 'DATABASE_URL', pattern: databaseUrlPattern, redact: () => '[REDACTED_DATABASE_URL]' },
+  { type: 'AUTHORIZATION', pattern: authorizationPattern, redact: () => '[REDACTED_AUTHORIZATION]' },
+  { type: 'API_TOKEN', pattern: apiTokenPattern, redact: () => '[REDACTED_API_TOKEN]' },
+  { type: 'URL', pattern: urlPattern, redact: () => '[REDACTED_URL]' },
   { type: 'EMAIL', pattern: emailPattern, redact: redactEmail },
   { type: 'ID_CARD', pattern: idCardPattern, redact: redactIdCard },
   { type: 'PHONE', pattern: phonePattern, redact: redactPhone },
@@ -136,9 +148,38 @@ export function redactSensitiveInfo(text: string): string {
   return output;
 }
 
+/** Canonical free-text safety result used by persistence and model boundaries. */
+export function sanitizeSensitiveText(text: string): {
+  value: string;
+  redactionCount: number;
+  needsPrivacyReview: boolean;
+} {
+  const matches = detectSensitiveInfo(text);
+  return {
+    value: redactSensitiveInfo(text),
+    redactionCount: matches.length,
+    needsPrivacyReview:
+      matches.some((match) => match.type === 'ADDRESS') ||
+      /(?:身份证|住址|地址|姓名|公司名称|联系人)/u.test(text),
+  };
+}
+
 /** Creates a deterministic SHA-256 hash for sensitive values or structured payloads. */
 export function hashSensitiveValue(value: unknown): string {
   return createHash('sha256').update(stableSerialize(value)).digest('hex');
+}
+
+/** Keeps safe correlation IDs verbatim and hashes all other values into a bounded token. */
+export function sanitizeCorrelationId(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.length <= learningFeedbackRequestIdMaxLength && learningFeedbackRequestIdPattern.test(value)) return value;
+  return `sha256:${hashSensitiveValue(value)}`;
+}
+
+/** Creates a tenant-scoped keyed pseudonym without exposing the source identity. */
+export function pseudonymizeSensitiveValue(value: unknown, key: string): string {
+  if (key.length === 0) throw new Error('A non-empty pseudonym key is required.');
+  return createHmac('sha256', key).update(stableSerialize(value)).digest('hex');
 }
 
 function sanitizeValue(value: unknown, options: Required<SanitizeAuditLogOptions>): unknown {

@@ -1,5 +1,7 @@
 import {
   boolean,
+  check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -11,12 +13,16 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import type {
   AuditResult,
   Evidence,
   Finding,
   HumanReviewTicket,
   JobPostingInput,
+  LearningFeedbackEvent,
+  LearningFeedbackRetentionSummary,
+  LearningFeedbackSubmission,
   RuleImprovementSuggestion,
 } from '@job-compliance/shared';
 
@@ -168,6 +174,8 @@ export interface DisputedCasePayload {
   updatedAt: string;
   resolvedAt?: string;
 }
+
+export type LearningFeedbackSubmissionPayload = LearningFeedbackSubmission;
 
 export interface UserPayload {
   id: string;
@@ -913,6 +921,7 @@ export const auditRuns = pgTable(
     persistedAt: timestamp('persisted_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex('audit_runs_learning_feedback_chain_uidx').on(table.id, table.tenantId),
     index('audit_runs_tenant_created_at_idx').on(table.tenantId, table.createdAt),
     index('audit_runs_tenant_decision_idx').on(table.tenantId, table.decision),
     index('audit_runs_tenant_risk_level_idx').on(table.tenantId, table.riskLevel),
@@ -1184,6 +1193,7 @@ export const reviewTickets = pgTable(
   },
   (table) => [
     uniqueIndex('review_tickets_audit_run_idx').on(table.auditRunId),
+    uniqueIndex('review_tickets_learning_feedback_chain_uidx').on(table.id, table.auditRunId, table.tenantId),
     index('review_tickets_tenant_status_idx').on(table.tenantId, table.status),
     index('review_tickets_tenant_created_at_idx').on(table.tenantId, table.createdAt),
   ],
@@ -1209,7 +1219,10 @@ export const humanReviewFeedback = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().default({}).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (table) => [index('human_review_feedback_tenant_run_idx').on(table.tenantId, table.auditRunId)],
+  (table) => [
+    uniqueIndex('human_review_feedback_learning_feedback_chain_uidx').on(table.id, table.reviewTicketId, table.auditRunId, table.tenantId),
+    index('human_review_feedback_tenant_run_idx').on(table.tenantId, table.auditRunId),
+  ],
 );
 
 export const reviewerDecisions = pgTable(
@@ -2626,5 +2639,126 @@ export const releaseApprovalRecords = pgTable(
   (table) => [
     index('release_approval_records_candidate_idx').on(table.candidateId),
     index('release_approval_records_approver_idx').on(table.approvedBy),
+  ],
+);
+
+/**
+ * A privacy-quarantined, explicitly consented feedback record. The payload is
+ * sanitized before this table is reached and is never a source for automatic
+ * training, rule publication, or audit-decision changes.
+ */
+export const learningFeedbackSubmissions = pgTable(
+  'learning_feedback_submissions',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    auditRunId: text('audit_run_id').notNull(),
+    humanReviewTicketId: text('human_review_ticket_id').notNull(),
+    reviewerDecisionId: uuid('reviewer_decision_id').notNull(),
+    source: text('source').notNull(),
+    status: text('status').notNull(),
+    consentScope: text('consent_scope').notNull(),
+    consentNoticeVersion: text('consent_notice_version').notNull(),
+    consentedAt: timestamp('consented_at', { withTimezone: true }).notNull(),
+    purpose: text('purpose').notNull(),
+    retentionDays: integer('retention_days').notNull(),
+    retentionExpiresAt: timestamp('retention_expires_at', { withTimezone: true }).notNull(),
+    reviewerPseudonym: text('reviewer_pseudonym').notNull(),
+    pseudonymKeyVersion: text('pseudonym_key_version').notNull(),
+    digest: text('digest').notNull(),
+    sanitizedComment: text('sanitized_comment').notNull(),
+    sanitizedEvidenceFragments: jsonb('sanitized_evidence_fragments').$type<string[]>().notNull(),
+    redactionSummary: jsonb('redaction_summary').$type<LearningFeedbackSubmission['redactionSummary']>().notNull(),
+    agentDecision: text('agent_decision').notNull(),
+    humanDecision: text('human_decision').notNull(),
+    ruleVersion: text('rule_version'),
+    lawKbVersion: text('law_kb_version'),
+    payload: jsonb('payload').$type<LearningFeedbackSubmissionPayload>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    governanceVersion: integer('governance_version').default(0).notNull(),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    supersededBy: text('superseded_by'),
+  },
+  (table) => [
+    check('learning_feedback_submissions_source_check', sql`${table.source} = 'API'`),
+    check('learning_feedback_submissions_status_check', sql`${table.status} IN ('RECEIVED','NEEDS_REVIEW','PRIVACY_REJECTED','APPROVED','REJECTED','WITHDRAWN','PROMOTED_TO_GOLD_SET')`),
+    check('learning_feedback_submissions_consent_scope_check', sql`${table.consentScope} = 'TENANT_PRIVATE'`),
+    check('learning_feedback_submissions_consent_notice_version_check', sql`${table.consentNoticeVersion} = 'learning-feedback-v1'`),
+    check('learning_feedback_submissions_purpose_check', sql`${table.purpose} = 'QUALITY_IMPROVEMENT_REVIEW'`),
+    check('learning_feedback_submissions_retention_days_check', sql`${table.retentionDays} > 0`),
+    check('learning_feedback_submissions_governance_version_check', sql`${table.governanceVersion} >= 0`),
+    foreignKey({ columns: [table.auditRunId, table.tenantId], foreignColumns: [auditRuns.id, auditRuns.tenantId], name: 'learning_feedback_audit_tenant_fkey' }).onDelete('restrict'),
+    foreignKey({ columns: [table.humanReviewTicketId, table.auditRunId, table.tenantId], foreignColumns: [reviewTickets.id, reviewTickets.auditRunId, reviewTickets.tenantId], name: 'learning_feedback_ticket_chain_fkey' }).onDelete('restrict'),
+    foreignKey({ columns: [table.reviewerDecisionId, table.humanReviewTicketId, table.auditRunId, table.tenantId], foreignColumns: [humanReviewFeedback.id, humanReviewFeedback.reviewTicketId, humanReviewFeedback.auditRunId, humanReviewFeedback.tenantId], name: 'learning_feedback_decision_chain_fkey' }).onDelete('restrict'),
+    uniqueIndex('learning_feedback_idempotency_idx').on(table.tenantId, table.reviewerDecisionId, table.digest, table.consentNoticeVersion),
+    uniqueIndex('learning_feedback_id_tenant_uidx').on(table.id, table.tenantId),
+    index('learning_feedback_tenant_status_idx').on(table.tenantId, table.status),
+    index('learning_feedback_retention_idx').on(table.retentionExpiresAt, table.status),
+    index('learning_feedback_ticket_idx').on(table.humanReviewTicketId),
+  ],
+);
+
+export const learningFeedbackEvents = pgTable(
+  'learning_feedback_events',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    learningFeedbackId: text('learning_feedback_id').notNull(),
+    eventType: text('event_type').$type<LearningFeedbackEvent['eventType']>().notNull(),
+    fromStatus: text('from_status').$type<LearningFeedbackEvent['fromStatus']>(),
+    toStatus: text('to_status').$type<LearningFeedbackEvent['toStatus']>().notNull(),
+    actorPseudonym: text('actor_pseudonym').notNull(),
+    pseudonymKeyVersion: text('pseudonym_key_version').notNull(),
+    reasonCode: text('reason_code').$type<LearningFeedbackEvent['reasonCode']>(),
+    reasonNoteRedacted: text('reason_note_redacted'),
+    requestId: text('request_id'),
+    metadata: jsonb('metadata').$type<Record<string, never>>().default({}).notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check('learning_feedback_events_event_type_check', sql`${table.eventType} IN ('SUBMITTED','WITHDRAWN','REVIEW_APPROVED','REVIEW_REJECTED')`),
+    check('learning_feedback_events_from_status_check', sql`${table.fromStatus} IS NULL OR ${table.fromStatus} IN ('RECEIVED','NEEDS_REVIEW','PRIVACY_REJECTED','APPROVED','REJECTED','WITHDRAWN','PROMOTED_TO_GOLD_SET')`),
+    check('learning_feedback_events_to_status_check', sql`${table.toStatus} IN ('RECEIVED','NEEDS_REVIEW','PRIVACY_REJECTED','APPROVED','REJECTED','WITHDRAWN','PROMOTED_TO_GOLD_SET')`),
+    check('learning_feedback_events_reason_code_check', sql`${table.reasonCode} IN ('QUALITY_VALIDATED','INSUFFICIENT_QUALITY','PRIVACY_CONCERN','OUT_OF_SCOPE','OTHER')`),
+    check('learning_feedback_events_event_semantics_check', sql`(${table.eventType} = 'SUBMITTED' AND ${table.fromStatus} IS NULL AND ${table.toStatus} IN ('RECEIVED','NEEDS_REVIEW') AND ${table.reasonCode} IS NULL AND ${table.reasonNoteRedacted} IS NULL) OR (${table.eventType} = 'WITHDRAWN' AND ${table.fromStatus} IN ('RECEIVED','NEEDS_REVIEW') AND ${table.toStatus} = 'WITHDRAWN' AND ${table.reasonCode} IS NULL AND ${table.reasonNoteRedacted} IS NULL) OR (${table.eventType} = 'REVIEW_APPROVED' AND ${table.fromStatus} IN ('RECEIVED','NEEDS_REVIEW') AND ${table.toStatus} = 'APPROVED' AND ${table.reasonCode} = 'QUALITY_VALIDATED') OR (${table.eventType} = 'REVIEW_REJECTED' AND ${table.fromStatus} IN ('RECEIVED','NEEDS_REVIEW') AND ${table.toStatus} = 'REJECTED' AND ${table.reasonCode} IN ('INSUFFICIENT_QUALITY','PRIVACY_CONCERN','OUT_OF_SCOPE','OTHER'))`),
+    check('learning_feedback_events_request_id_check', sql`${table.requestId} IS NULL OR (char_length(${table.requestId}) <= 128 AND ${table.requestId} ~ '^[A-Za-z0-9._:-]+$')`),
+    check('learning_feedback_events_metadata_check', sql`${table.metadata} = '{}'::jsonb`),
+    foreignKey({ columns: [table.learningFeedbackId, table.tenantId], foreignColumns: [learningFeedbackSubmissions.id, learningFeedbackSubmissions.tenantId], name: 'learning_feedback_event_submission_tenant_fkey' }).onDelete('cascade'),
+    uniqueIndex('learning_feedback_event_submitted_uidx').on(table.learningFeedbackId).where(sql`${table.eventType} = 'SUBMITTED'`),
+    uniqueIndex('learning_feedback_event_withdrawn_uidx').on(table.learningFeedbackId).where(sql`${table.eventType} = 'WITHDRAWN'`),
+    uniqueIndex('learning_feedback_event_review_uidx').on(table.learningFeedbackId).where(sql`${table.eventType} IN ('REVIEW_APPROVED', 'REVIEW_REJECTED')`),
+    index('learning_feedback_events_tenant_feedback_idx').on(table.tenantId, table.learningFeedbackId, table.occurredAt),
+  ],
+);
+
+export const learningFeedbackRetentionRuns = pgTable(
+  'learning_feedback_retention_runs',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id').notNull(),
+    mode: text('mode').$type<LearningFeedbackRetentionSummary['mode']>().notNull(),
+    runStatus: text('run_status').$type<LearningFeedbackRetentionSummary['status']>().notNull(),
+    failureCode: text('failure_code').$type<string | null>(),
+    cutoff: timestamp('cutoff', { withTimezone: true }).notNull(),
+    operationStartedAt: timestamp('operation_started_at', { withTimezone: true }).notNull(),
+    batchLimit: integer('batch_limit').notNull(),
+    candidateCount: integer('candidate_count').notNull(),
+    deletedCount: integer('deleted_count').notNull(),
+    countsByStatus: jsonb('counts_by_status').$type<LearningFeedbackRetentionSummary['countsByStatus']>().default({}).notNull(),
+    anomalyCount: integer('anomaly_count').notNull(),
+    actorPseudonym: text('actor_pseudonym').notNull(),
+    pseudonymKeyVersion: text('pseudonym_key_version').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check('learning_feedback_retention_runs_mode_check', sql`${table.mode} = 'DRY_RUN'`),
+    check('learning_feedback_retention_runs_run_status_check', sql`${table.runStatus} = 'SUCCEEDED'`),
+    check('learning_feedback_retention_runs_failure_code_check', sql`${table.runStatus} = 'SUCCEEDED' AND ${table.failureCode} IS NULL AND ${table.deletedCount} = 0`),
+    check('learning_feedback_retention_runs_batch_limit_check', sql`${table.batchLimit} > 0`),
+    check('learning_feedback_retention_runs_candidate_count_check', sql`${table.candidateCount} >= 0`),
+    check('learning_feedback_retention_runs_deleted_count_check', sql`${table.deletedCount} >= 0`),
+    check('learning_feedback_retention_runs_anomaly_count_check', sql`${table.anomalyCount} >= 0`),
+    index('learning_feedback_retention_runs_tenant_time_idx').on(table.tenantId, table.occurredAt),
   ],
 );

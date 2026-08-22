@@ -289,7 +289,7 @@ describe('audit API routes', () => {
     expect(decisionResponse.statusCode).toBe(200);
     expect(closed.status).toBe('completed');
     expect(closed.feedback).toMatchObject({
-      reviewerId: 'mock_reviewer_001',
+      reviewerId: 'test_super_admin',
       agentDecision: 'MANUAL_REVIEW',
       finalDecision: 'REQUEST_REVISION',
       feedbackType: 'RULE_TOO_BROAD',
@@ -297,6 +297,7 @@ describe('audit API routes', () => {
       falsePositive: false,
       falseNegative: false,
     });
+    expect(closed.feedback?.reviewerId).not.toBe('mock_reviewer_001');
 
     const addToEvalResponse = await app.inject({
       method: 'POST',
